@@ -4,13 +4,15 @@ name: local-fleet
 repo: https://github.com/humedini/local-fleet
 sha: 0000000000000000000000000000000000000000
 title: Local Fleet
-description: 'Health-aware routing across your own inference boxes (DGX Spark / GB10, Ollama, vLLM, LiteLLM).
-  Probes each box, makes the least busy one the primary model, fails over to your cloud model when every
-  box is down and fails back when one recovers; prefer-local, prefer-cloud and auto modes. Writes only
-  model.provider/default/base_url/api_mode/key_env and appends your cloud entry to fallback_providers (core keeps
-  per-turn failover); `hermes fleet restore` puts your original primary back. CLI `hermes fleet`, slash `/fleet`,
-  Desktop status-bar chip and fleet panel, opt-in DGX Spark theme. Network: HTTP only to the base URLs you
-  register. Tools are read-only except an Ollama-only model pull; no remote command execution.'
+description: 'Health-aware routing across your own inference boxes (DGX Spark / GB10, Ollama, vLLM, LiteLLM, and
+  clusters behind one endpoint). Probes each box, makes the least busy healthy one the primary model, falls back to
+  smaller models on smaller boxes, then to your cloud model, and switches back when a box recovers. Optional:
+  subagents spread across boxes (delegation backend fleet), side tasks on the fleet (auxiliary.*), keep the routed
+  model loaded, speed benches. CLI hermes fleet, /fleet, Desktop chip and fleet page. Writes model.*,
+  fallback_providers, and on request delegation.backend and auxiliary.<task>; hermes fleet restore puts the primary
+  back. Network: HTTP only to the boxes you register (health, a 64-token bench, model load/keep-alive, optional
+  pull). Observer hooks record per-call endpoint, model, tokens and duration (never content) in its data dir.
+  Read-only tools plus an Ollama-only model pull; no remote command execution.'
 maintainer: humedini
 tier: community
 category: models
@@ -21,6 +23,6 @@ readme: true
 platforms: []
 capabilities:
   provides_tools: [fleet_status, fleet_list_nodes, fleet_pull_model]
-  provides_hooks: [on_session_start]
+  provides_hooks: [on_session_start, post_api_request, api_request_error, post_auxiliary_call]
   provides_middleware: []
   requires_env: []

@@ -1,6 +1,6 @@
-# Unit tests on every supported Python, a syntax check of the Desktop half, and a manifest sanity
-# check. `hermes plugins validate . --install-deps` and `hermes plugins doctor . --ci` need a Hermes
-# install and run locally before each release (see README, Develop).
+# Unit tests on every supported Python (they include the manifest/catalog consistency checks), a
+# syntax check of the Desktop half, and Hermes's own catalog checks (validate + doctor) against a
+# pinned Hermes. Hermes only supports editable installs, so it is checked out at that commit.
 name: ci
 on:
   push:
@@ -21,18 +21,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install "httpx>=0.27,<1" "pyyaml>=6,<7" "pytest>=8,<10" "respx>=0.21,<1" "fastapi>=0.110,<1"
       - run: python -m pytest tests -q
-      - name: manifest declares what register() provides
-        run: |
-          python - <<'PY'
-          import yaml
-          m = yaml.safe_load(open("plugin.yaml"))
-          assert m["name"] == "local-fleet" and m["manifest_version"] == 2
-          assert sorted(m["provides_tools"]) == ["fleet_list_nodes", "fleet_pull_model", "fleet_status"]
-          assert m["provides_hooks"] == ["on_session_start"]
-          for k, v in m["config_schema"].items():
-              assert v["type"] in ("str", "int", "float", "bool", "list"), k
-          print("plugin.yaml ok, version", m["version"])
-          PY
+
   desktop:
     runs-on: ubuntu-latest
     steps:
@@ -44,3 +33,24 @@ jobs:
         run: |
           cp desktop/plugin.js /tmp/plugin.mjs && node --check /tmp/plugin.mjs
           ! grep -nE "return <|=> <[A-Za-z]" desktop/plugin.js
+  hermes:
+    runs-on: ubuntu-latest
+    env:
+      HERMES_REF: b200f5bc60e31588ba2cb60e288029c4a54ba5fa  # Hermes 0.22.7, the version this release was built against
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: local-fleet
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ env.HERMES_REF }}
+          path: hermes-agent
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: pip install -e ./hermes-agent
+      - name: hermes plugins validate
+        run: HERMES_HOME="$RUNNER_TEMP/hh" hermes plugins validate local-fleet --install-deps
+      - name: hermes plugins doctor
+        run: HERMES_HOME="$RUNNER_TEMP/hh" hermes plugins doctor local-fleet --ci
