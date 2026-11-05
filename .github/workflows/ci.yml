@@ -48,7 +48,7 @@ jobs:
           path: hermes-agent
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"  # Hermes's own runtime; some of its pins only apply on 3.14
       - run: pip install -e ./hermes-agent
       - name: hermes plugins validate
         run: HERMES_HOME="$RUNNER_TEMP/hh" hermes plugins validate local-fleet --install-deps

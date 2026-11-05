@@ -66,9 +66,10 @@ def route(task: dict, settings: dict, nodes: list[dict], secret=None) -> dict:
 def note(r: dict) -> None:
     """Remember the last routes for the Desktop map (box name and time only, never the task)."""
     try:
-        state = store.load_state()
-        state["delegations"] = ((state.get("delegations") or []) + [{"at": now_iso(), "label": r.get("label")}])[-30:]
-        store.save_state(state)
+        with store.transaction():
+            state = store.load_state()
+            state["delegations"] = ((state.get("delegations") or []) + [{"at": now_iso(), "label": r.get("label")}])[-30:]
+            store.save_state(state)
     except Exception:
         pass
 

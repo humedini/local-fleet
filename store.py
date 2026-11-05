@@ -42,11 +42,18 @@ def save_state(state: dict) -> None:
     write_json_atomic(data_dir() / STATE_FILE, state)
 
 
+def transaction():
+    """The cross-process lock for this profile's Local Fleet files (see locking.py)."""
+    from .locking import locked
+    return locked(data_dir())
+
+
 def update_state(**changes) -> dict:
-    state = load_state()
-    state.update(changes)
-    save_state(state)
-    return state
+    with transaction():
+        state = load_state()
+        state.update(changes)
+        save_state(state)
+        return state
 
 
 def read_settings() -> dict:

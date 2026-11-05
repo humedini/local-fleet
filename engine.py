@@ -1,7 +1,6 @@
 """Probe -> decide -> apply, shared by the CLI, `/fleet`, the tools and the Desktop backend."""
 from __future__ import annotations
 
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
@@ -12,7 +11,6 @@ from .bench import bench_node
 from .health import probe_all
 from .routing import decide, model_for, model_tiers, same_target
 
-_lock = threading.Lock()  # one apply at a time within a process (watch + a slash command)
 SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
 HISTORY_LEN = 25  # routing changes kept for the Desktop timeline
 
@@ -78,16 +76,17 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     if auto_bench:
         run_bench(f, results, settings, _due_for_bench(f, settings))
     stamp = now_iso()
-    state = store.load_state()
-    series = state.get("series") or {}
-    for nid, snap in results.items():
-        points = series.get(nid, [])[-(SERIES_LEN - 1):]
-        points.append({"t": stamp, "lat": snap.get("latency_ms"), "load": snap.get("load_proxy"), "st": snap["status"]})
-        series[nid] = points
-    live = {n["id"] for n in f.nodes}
-    state["series"] = {k: v for k, v in series.items() if k in live}
-    state["last_probe_at"] = stamp
-    store.save_state(state)
+    with store.transaction():
+        state = store.load_state()
+        series = state.get("series") or {}
+        for nid, snap in results.items():
+            points = series.get(nid, [])[-(SERIES_LEN - 1):]
+            points.append({"t": stamp, "lat": snap.get("latency_ms"), "load": snap.get("load_proxy"), "st": snap["status"]})
+            series[nid] = points
+        live = {n["id"] for n in store.fleet().nodes}
+        state["series"] = {k: v for k, v in series.items() if k in live}
+        state["last_probe_at"] = stamp
+        store.save_state(state)
     return settings, f, results
 
 
@@ -102,7 +101,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
     `pin` is a node id/name to use now and keep while it stays healthy (`hermes fleet use gx10`);
     `unpin` drops any pin first (`use --freest`, a mode change).
     """
-    with _lock:
+    with store.transaction():
         settings, f, results = probe(auto_bench=auto_bench)
         state = store.load_state()
         applied_now = dict(state.get("applied") or {})
@@ -218,7 +217,7 @@ def _keep_loaded(settings, f, results, before: dict, now: dict) -> str | None:
 def set_keep(on: bool) -> str:
     """Turn keep_loaded on (holds the routed model now) or off (hands it back to Ollama's timer)."""
     store.write_setting("keep_loaded", on)
-    with _lock:
+    with store.transaction():
         state = store.load_state()
         applied = state.get("applied") or {}
         if not applied:
@@ -232,7 +231,7 @@ def set_keep(on: bool) -> str:
 
 
 def aux_off() -> list[str]:
-    with _lock:
+    with store.transaction():
         state = store.load_state()
         current = state.get("aux_applied")
         store.write_setting("aux_tasks", [])
@@ -247,7 +246,7 @@ def aux_off() -> list[str]:
 
 def restore() -> dict | None:
     """Put back the primary the user had before local-fleet first changed it."""
-    with _lock:
+    with store.transaction():
         state = store.load_state()
         original = state.get("original_model")
         if original is None:

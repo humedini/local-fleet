@@ -73,7 +73,9 @@ def record(ok: bool, aux: str = "", **kw) -> None:
         finally:
             os.close(fd)
         if path.stat().st_size > MAX_BYTES:
-            _trim(path)
+            with store.transaction():
+                if path.stat().st_size > MAX_BYTES:
+                    _trim(path)
     except Exception:
         pass
 

@@ -10,11 +10,13 @@ import os
 import re
 import tempfile
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from .constants import FLEET_FILE, KINDS, OSES, VENDORS
+from .locking import locked
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -62,6 +64,43 @@ class Fleet:
         if self.path.exists():
             self.nodes = json.loads(self.path.read_text()).get("nodes", [])
 
+    def _reload(self) -> None:
+        self.nodes = json.loads(self.path.read_text()).get("nodes", []) if self.path.exists() else []
+
+    @contextmanager
+    def _txn(self):
+        """Lock, reload what is on disk, change, save: no change from another process is lost."""
+        with locked(self.path.parent):
+            self._reload()
+            yield
+            self.save()
+
+    def add(self, *a, **kw) -> dict:
+        with self._txn():
+            return self._add(*a, **kw)
+
+    def remove(self, ref: str) -> dict:
+        with self._txn():
+            return self._remove(ref)
+
+    def set_enabled(self, ref: str, enabled: bool) -> dict:
+        with self._txn():
+            return self._set_enabled(ref, enabled)
+
+    def update(self, ref: str, **fields) -> dict:
+        with self._txn():
+            return self._update(ref, **fields)
+
+    def record_perf(self, results: dict[str, dict]) -> None:
+        """Merge bench results into the boxes on disk (by id; boxes removed meanwhile stay removed)."""
+        with self._txn():
+            self._record_perf(results)
+
+    def record_health(self, results: dict[str, dict]) -> None:
+        """Merge probe results into the boxes on disk (by id; edits made meanwhile are kept)."""
+        with self._txn():
+            self._record_health(results)
+
     def save(self) -> None:
         write_json_atomic(self.path, {"version": 1, "nodes": self.nodes})
 
@@ -82,7 +121,7 @@ class Fleet:
             raise FleetError(f"no node {ref!r}; see `hermes fleet list`")
         return node
 
-    def add(self, name: str, url: str, kind: str = "ollama", labels=None,
+    def _add(self, name: str, url: str, kind: str = "ollama", labels=None,
             api_key_env: str | None = None, enabled: bool = True,
             capacity_gb: float | None = None, vendor: str | None = None, os_name: str | None = None,
             memory_gb: float | None = None, title: str | None = None, members=None,
@@ -128,16 +167,14 @@ class Fleet:
             "updated_at": stamp,
         }
         self.nodes.append(node)
-        self.save()
         return node
 
-    def remove(self, ref: str) -> dict:
+    def _remove(self, ref: str) -> dict:
         node = self.get(ref)
         clusters = [n["name"] for n in self.nodes if node["id"] in (n.get("members") or [])]
         if clusters:
             raise FleetError(f"{node['name']} is part of {', '.join(clusters)}; remove it from the cluster first")
         self.nodes.remove(node)
-        self.save()
         return node
 
     def _member_ids(self, members) -> list[str]:
@@ -156,14 +193,13 @@ class Fleet:
     def clusters_of(self, node_id: str) -> list[dict]:
         return [n for n in self.nodes if node_id in (n.get("members") or [])]
 
-    def set_enabled(self, ref: str, enabled: bool) -> dict:
+    def _set_enabled(self, ref: str, enabled: bool) -> dict:
         node = self.get(ref)
         node["enabled"] = enabled
         node["updated_at"] = now_iso()
-        self.save()
         return node
 
-    def update(self, ref: str, **fields) -> dict:
+    def _update(self, ref: str, **fields) -> dict:
         """Change a node's vendor, os, labels, capacity_gb or memory_gb."""
         node = self.get(ref)
         _check_platform(fields.get("vendor"), fields.get("os"))
@@ -182,10 +218,9 @@ class Fleet:
                 raise FleetError("a cluster cannot contain itself")
             node["members"] = ids
         node["updated_at"] = now_iso()
-        self.save()
         return node
 
-    def record_perf(self, results: dict[str, dict]) -> None:
+    def _record_perf(self, results: dict[str, dict]) -> None:
         """Store each bench result (keyed by node id); keep the last good speed when a run is skipped."""
         for n in self.nodes:
             r = results.get(n["id"])
@@ -195,9 +230,8 @@ class Fleet:
                 n["perf"] = r
             else:
                 n["perf_note"] = r
-        self.save()
 
-    def record_health(self, results: dict[str, dict]) -> None:
+    def _record_health(self, results: dict[str, dict]) -> None:
         """Store each probe's snapshot (keyed by node id) and the models it saw."""
         for n in self.nodes:
             snap = results.get(n["id"])
@@ -207,7 +241,6 @@ class Fleet:
             if snap.get("models"):
                 n["models"] = snap["models"]
             n["updated_at"] = snap["checked_at"]
-        self.save()
 
 
 def _check_title(title):
