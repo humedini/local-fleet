@@ -222,7 +222,7 @@ def snapshot() -> dict:
         "last_probe_at": state.get("last_probe_at"),
         "series": state.get("series") or {},
         "traffic": stats,
-        "currency": settings.get("currency") or "$",
+        "currency": settings.get("currency") or "USD",
         "aux": state.get("aux_applied"),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],

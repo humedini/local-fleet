@@ -60,7 +60,7 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
     p.add_argument("input", type=float)
     p.add_argument("output", type=float)
-    p.add_argument("--currency", default=None)
+    p.add_argument("--currency", default=None, help="ISO 4217 code (GBP, EUR, USD, …) or £ € $ ¥")
     p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the freest box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
@@ -156,9 +156,9 @@ def stats_text() -> str:
     share = f"{t['local_share'] * 100:.0f}%" if t["local_share"] is not None else "-"
     lines.append(f"\nlocal tokens {t['local_tokens']:,} · cloud tokens {t['cloud_tokens']:,} · local share {share}")
     if t["saved"] is not None:
-        lines.append(f"spend avoided this week: {s['currency']}{t['saved']:,.2f}")
+        lines.append(f"spend avoided this week: {store.format_money(t['saved'], s['currency'])}")
     else:
-        lines.append("spend avoided: set a cloud price with hermes fleet price <in> <out> [--currency £]")
+        lines.append("spend avoided: set a cloud price with hermes fleet price <in> <out> [--currency GBP]")
     lines.append("(tok/s here is effective: real calls including prompt processing; hermes fleet bench gives decode speed)")
     return "\n".join(lines)
 
@@ -295,11 +295,15 @@ def _dispatch(cmd: str, args) -> int:
         print(stats_text())
         return 0
     if cmd == "price":
+        try:
+            code = store.currency_code(args.currency) if args.currency else store.read_settings()["currency"]
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 1
         store.write_setting("price_in_per_m", args.input)
         store.write_setting("price_out_per_m", args.output)
-        if args.currency:
-            store.write_setting("currency", args.currency)
-        print(f"cloud price set: {args.input:g} in / {args.output:g} out per million tokens")
+        store.write_setting("currency", code)
+        print(f"cloud price set: {store.format_money(args.input, code)} in / {store.format_money(args.output, code)} out per million tokens")
         return 0
     if cmd == "aux":
         return _aux(args)

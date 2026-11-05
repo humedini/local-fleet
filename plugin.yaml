@@ -102,8 +102,9 @@ config_schema:
     label: Cloud output price per million tokens
   currency:
     type: str
-    default: "$"
-    label: Currency symbol for spend avoided
+    default: "USD"
+    label: Currency for spend avoided
+    description: ISO 4217 code (GBP, EUR, USD, JPY, …); prices are in this currency and the Desktop formats them in your locale
   prefer_labels:
     type: list
     default: []

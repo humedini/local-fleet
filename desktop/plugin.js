@@ -419,8 +419,15 @@ function recentDelegation(s, n) {
   return (s.delegations || []).some(d => d.label === n.name && Date.now() - Date.parse(d.at) < 120000)
 }
 
+// Amounts in the user's locale (symbol position, decimal comma, grouping) for the configured ISO code.
 function money(s, v) {
-  return `${s.currency || '$'}${v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(2)}`
+  const code = /^[A-Z]{3}$/.test(s.currency || '') ? s.currency : 'USD'
+  try {
+    // Each currency keeps its own minor units (yen has none); large sums drop them.
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: code, ...(v >= 100 ? { maximumFractionDigits: 0 } : {}) }).format(v)
+  } catch (err) {
+    return `${v.toFixed(2)} ${code}`
+  }
 }
 
 function FleetMap({ s }) {
@@ -555,7 +562,7 @@ function FleetPage({ ctx }) {
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { style: a.kind === 'local' ? { color: SPARK_GREEN } : undefined, children: a.kind === 'local' ? a.node_name : a.kind === 'cloud' ? 'cloud' : '—' }), jsx('span', { children: 'Routed to' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: (s.traffic || {}).local_share != null ? `${Math.round(s.traffic.local_share * 100)}%` : '—' }), jsx('span', { children: 'Tokens run locally (7 d)' })] }),
-      jsxs('div', { className: 'hs-stat', title: (s.traffic || {}).saved == null ? 'Set a cloud price: hermes fleet price <in> <out> --currency £' : 'Local tokens at your cloud price', children: [
+      jsxs('div', { className: 'hs-stat', title: (s.traffic || {}).saved == null ? 'Set a cloud price: hermes fleet price <in> <out> --currency GBP' : 'Local tokens at your cloud price', children: [
         jsx('b', { style: (s.traffic || {}).saved ? { color: SPARK_GREEN } : undefined, children: (s.traffic || {}).saved != null ? money(s, s.traffic.saved) : '—' }),
         jsx('span', { children: 'Cloud spend avoided (7 d)' })] })
     ] }),

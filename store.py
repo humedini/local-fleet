@@ -58,6 +58,10 @@ def read_settings() -> dict:
     out.update({k: v for k, v in saved.items() if v is not None})
     if out.get("mode") not in MODES:
         out["mode"] = DEFAULTS["mode"]
+    try:
+        out["currency"] = currency_code(out.get("currency"))
+    except ValueError:
+        out["currency"] = DEFAULTS["currency"]
     return out
 
 
@@ -73,6 +77,30 @@ def set_delegation_backend(name: str) -> None:
 def delegation_backend() -> str:
     from hermes_cli.config import load_config_readonly
     return str(((load_config_readonly() or {}).get("delegation") or {}).get("backend") or "default")
+
+
+_SYMBOLS = {"£": "GBP", "€": "EUR", "$": "USD", "¥": "JPY", "₹": "INR", "₩": "KRW", "A$": "AUD", "C$": "CAD"}
+CURRENCY_SIGN = {"GBP": "£", "EUR": "€", "USD": "$", "JPY": "¥", "INR": "₹", "KRW": "₩", "AUD": "A$", "CAD": "C$",
+                 "CHF": "CHF ", "CNY": "CN¥", "SEK": "kr ", "NOK": "kr ", "DKK": "kr ", "NZD": "NZ$"}
+
+
+_NO_MINOR_UNITS = {"JPY", "KRW", "VND", "CLP", "ISK"}
+
+
+def currency_code(value) -> str:
+    """'£' / 'gbp' / 'GBP' -> 'GBP'. Raises ValueError for anything that is not a 3-letter code or a known symbol."""
+    v = str(value or "").strip()
+    code = _SYMBOLS.get(v, v.upper())
+    if len(code) != 3 or not code.isalpha():
+        raise ValueError(f"{value!r} is not a currency code (ISO 4217, e.g. GBP, EUR, USD) or a known symbol")
+    return code
+
+
+def format_money(amount: float, code: str) -> str:
+    """Terminal formatting: a known sign in front, else the code after (12.50 PLN)."""
+    sign = CURRENCY_SIGN.get(code)
+    digits = 0 if amount >= 100 or code in _NO_MINOR_UNITS else 2
+    return f"{sign}{amount:,.{digits}f}" if sign else f"{amount:,.{digits}f} {code}"
 
 
 def write_setting(key: str, value) -> None:

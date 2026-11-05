@@ -30,7 +30,7 @@ DEFAULTS = {
     # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.
     "price_in_per_m": 0.0,
     "price_out_per_m": 0.0,
-    "currency": "$",
+    "currency": "USD",  # ISO 4217 code; the Desktop formats amounts in the viewer's locale
 }
 
 PROBE_CONCURRENCY = 8

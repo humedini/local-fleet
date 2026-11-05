@@ -95,3 +95,22 @@ def test_warm_loads_only_when_not_in_memory():
 def test_aux_block_shape():
     b = aux.block(dict(GX, kind="vllm"), "m", "", "")
     assert b == {"provider": "vllm", "model": "m", "base_url": "http://gx:11434/v1"}
+
+
+def test_currency_codes_and_formatting():
+    assert store.currency_code("£") == "GBP" and store.currency_code("eur") == "EUR"
+    for bad in ("pounds", "12", ""):
+        try:
+            store.currency_code(bad)
+            raise AssertionError(bad)
+        except ValueError:
+            pass
+    assert store.format_money(2.5, "GBP") == "£2.50"
+    assert store.format_money(1234.5, "EUR") == "€1,234"
+    assert store.format_money(3.1, "PLN") == "3.10 PLN"
+    assert store.format_money(42.4, "JPY") == "¥42"
+
+
+def test_old_symbol_setting_reads_as_a_code(hermes):  # noqa: F811
+    store.write_setting("currency", "£")
+    assert store.read_settings()["currency"] == "GBP"

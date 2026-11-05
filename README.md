@@ -103,10 +103,12 @@ Local Fleet listens to Hermes's own per-call observer hooks and keeps, per call,
 
 ```bash
 hermes fleet stats
-hermes fleet price 3 15 --currency £     # your cloud model's price per million tokens (input, output)
+hermes fleet price 3 15 --currency GBP   # your cloud model's price per million tokens (input, output)
 ```
 
-shows calls, errors, effective tok/s (real calls with 32+ output tokens, prompt processing included) and median latency per box, how many of the week's tokens ran locally, and what those would have cost on cloud. The Desktop map lights the wire of every box taking calls right now, subagents included.
+Amounts are shown in your currency: the Desktop formats them with your locale's rules (symbol position, decimal comma, grouping), the terminal with the currency's sign. Prices are whatever you enter, in that currency; nothing is converted or fetched.
+
+`stats` shows calls, errors, effective tok/s (real calls with 32+ output tokens, prompt processing included) and median latency per box, how many of the week's tokens ran locally, and what those would have cost on cloud. The Desktop map lights the wire of every box taking calls right now, subagents included.
 
 ## Warm before switching
 
@@ -149,7 +151,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet delegate on\|off\|status` | subagents on the fleet |
 | `hermes fleet aux on\|off\|status [--tasks]` | side tasks on the fleet |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |
-| `hermes fleet price <in> <out> [--currency]` | cloud price per million tokens |
+| `hermes fleet price <in> <out> [--currency CODE]` | cloud price per million tokens, in an ISO 4217 currency (`£ € $ ¥` accepted) |
 | `hermes fleet endpoint` | the primary Hermes is using |
 | `hermes fleet doctor` | readiness check |
 | `hermes fleet restore` | put back your original primary |
