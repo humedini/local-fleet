@@ -246,7 +246,8 @@ def _dispatch(cmd: str, args) -> int:
         node = store.fleet().add(args.name, args.url, args.kind, args.label, args.api_key_env,
                                  capacity_gb=args.capacity_gb, vendor=args.vendor, os_name=args.os_name,
                                  memory_gb=args.memory_gb)
-        print(f"added {node['name']} ({node['id']}) {node['base_url']} — probe with: hermes fleet status")
+        from .render import _url
+        print(f"added {node['name']} ({node['id']}) {_url(node)} — probe with: hermes fleet status")
         return 0
     if cmd in ("rm", "enable", "disable"):
         f = store.fleet()
@@ -333,7 +334,8 @@ def _dispatch(cmd: str, args) -> int:
         node = f.add(args.name, args.url, args.kind, [], args.api_key_env, title=args.title,
                      members=members, link=args.link)
         names = [f.get(m)["name"] for m in node["members"]]
-        print(f"added cluster {node['name']}: {' + '.join(names)}{' over ' + node['link'] if node.get('link') else ''} at {node['base_url']}")
+        from .render import _url
+        print(f"added cluster {node['name']}: {' + '.join(names)}{' over ' + node['link'] if node.get('link') else ''} at {_url(node)}")
         return 0
     if cmd == "set":
         node = store.fleet().update(args.node, vendor=args.vendor, os=args.os_name, labels=args.label,

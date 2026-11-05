@@ -153,3 +153,21 @@ def test_keep_loaded_holds_the_routed_model_and_releases_it(hermes):  # noqa: F8
     engine.set_keep(False)                                  # hands it back to a normal timer
     calls = [json.loads(c.request.content) for c in respx.calls if c.request.url.path == "/api/generate"]
     assert any(c.get("keep_alive") == "5m" for c in calls)
+
+
+@respx.mock
+def test_side_tasks_never_carry_credentials_across_hosts(hermes):  # noqa: F811
+    hermes.cfg["auxiliary"] = {"compression": {"provider": "openrouter", "model": "cheap", "api_key": "sk-old",
+                                               "api_mode": "chat_completions", "timeout": 60}}
+    f = store.fleet()
+    with f._txn():
+        f.nodes[0]["api_key_env"] = "GX_KEY"          # gx10 needs a key: never chosen for side tasks
+    store.write_setting("aux_tasks", ["compression"])
+    boxes(s2_load=())
+    engine.apply_policy(dry_run=True, aux_follow=True)
+    comp = hermes.cfg["auxiliary"]["compression"]
+    assert comp["base_url"] == "http://s2:11434/v1"
+    assert "api_key" not in comp and "api_mode" not in comp and comp["timeout"] == 60
+    engine.aux_off()
+    assert hermes.cfg["auxiliary"]["compression"] == {"provider": "openrouter", "model": "cheap", "api_key": "sk-old",
+                                                      "api_mode": "chat_completions", "timeout": 60}

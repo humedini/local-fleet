@@ -156,6 +156,8 @@ Ollama unloads a model after a few idle minutes, so the first message after a qu
 
 ## Keeping it current
 
+Routing is applied when you act (a command, `/fleet`, a Desktop button) and re-checked at the start of each new session. Switching between boxes, to cloud and back **continuously** needs `hermes fleet watch` running: the Desktop page shows stored status and does not probe or switch by itself. Within a single turn, Hermes's own `fallback_providers` already catches a failing call.
+
 Routing is re-evaluated when you run a command, when a new session starts (in the background, at most once per `probe_interval_s`), and continuously with:
 
 ```bash

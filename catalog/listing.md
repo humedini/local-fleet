@@ -13,7 +13,7 @@ Route Hermes across your own inference boxes (DGX Spark, Ollama, vLLM): health c
 - Least-busy-box routing that does not flip-flop, with label preferences and pinning
 - Modes: prefer-local, prefer-cloud, auto
 - Failover to your cloud model when every box is down, **failback** when one recovers
-- Works with core `fallback_providers` instead of replacing it; `restore` undoes everything
+- Works with core `fallback_providers` instead of replacing it; `restore` puts your original primary model back (`aux off`, `delegate off` and `keep off` undo the optional features)
 - CLI `hermes fleet …`, slash `/fleet`, Desktop status-bar chip + fleet panel, palette commands, opt-in DGX Spark theme
 - Read-only agent tools plus an Ollama-only model pull; **no remote shell**
 

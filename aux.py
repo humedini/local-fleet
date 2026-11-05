@@ -4,6 +4,8 @@ conversation stays wherever the mode puts it ("cloud brain, local sidecar").
 
 Writes `auxiliary.<task>.{provider, model, base_url, fallback_chain}` through Hermes's config
 writer and remembers each task's previous block, so `hermes fleet aux off` puts them back.
+Auxiliary blocks take a literal `api_key` only, never the name of an env var, so side tasks go only
+to boxes that need no key: Local Fleet never writes a key into config.
 Auxiliary calls are separate requests, so moving them never touches the main prompt cache.
 """
 from __future__ import annotations
@@ -12,7 +14,9 @@ from . import config_write
 
 TASKS = ("title_generation", "compression", "vision", "approval")
 DEFAULT_TASKS = ("title_generation", "compression")
-_KEYS = ("provider", "model", "base_url", "fallback_chain")
+# Every routing and credential field of a task block. All are cleared when side tasks move, so a key
+# meant for the previous endpoint never travels to a new host, and all come back on `aux off`.
+_KEYS = ("provider", "model", "base_url", "fallback_chain", "api_key", "key_env", "api_key_env", "api_mode")
 _PROVIDER = {"ollama": "ollama", "vllm": "vllm"}
 
 

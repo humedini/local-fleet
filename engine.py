@@ -8,7 +8,7 @@ from . import aux, config_write, store, traffic
 from .warm import warm
 from .fleet import now_iso
 from .bench import bench_node
-from .health import probe_all
+from .health import probe_all, routable, score
 from .routing import decide, model_for, model_tiers, same_target
 
 SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
@@ -196,7 +196,11 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     current = state.get("aux_applied")
     if not tasks:
         return None
-    node = f.find(decision.get("freest_node_id") or "")
+    # Least busy healthy box that needs no key (auxiliary blocks cannot name a key's env var).
+    want_model = decision.get("tier_model") or ""
+    keyless = [n for n in f.enabled() if not n.get("api_key_env") and routable(n, results.get(n["id"]), want_model)]
+    node = min(keyless, key=lambda n: score(n, results[n["id"]], settings.get("prefer_labels") or (), want_model),
+               default=None)
     if node is None:
         if current:
             aux.apply(current["tasks"], None, state.get("aux_original") or {})
