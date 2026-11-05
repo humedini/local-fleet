@@ -82,6 +82,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the least busy box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
+    p = sub.add_parser("snapshot", help="Print the fleet's current state as JSON (for dashboards and status screens)")
+    p.add_argument("--probe", action="store_true", help="probe every box first (changes nothing else)")
     p = sub.add_parser("privacy", help="Hide box addresses in the Desktop and terminal (for recordings)")
     p.add_argument("action", choices=("on", "off"))
     p = sub.add_parser("keep", help="Keep the routed model in memory while Hermes is routed to a box")
@@ -162,6 +164,28 @@ def _watch(args) -> int:
     except KeyboardInterrupt:
         print("\nwatch stopped")
         return 0
+
+
+def snapshot_view(probe: bool = False) -> dict:
+    """What the Desktop page shows, as one JSON document: a read-only export for other screens.
+    Node entries never include how a key is found; with privacy on, addresses are left out."""
+    if probe:
+        engine.probe()
+    snap = engine.snapshot()
+    nodes = [public_node(n) for n in store.fleet().nodes]
+    snap["nodes"] = nodes
+    if snap.get("hide_addresses"):
+        snap = _strip_addresses(snap)
+    snap["schema"] = 1
+    return snap
+
+
+def _strip_addresses(v):
+    if isinstance(v, dict):
+        return {k: _strip_addresses(x) for k, x in v.items() if k != "base_url"}
+    if isinstance(v, list):
+        return [_strip_addresses(x) for x in v]
+    return v
 
 
 def stats_text() -> str:
@@ -364,6 +388,9 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "aux":
         return _aux(args)
+    if cmd == "snapshot":
+        print(json.dumps(snapshot_view(probe=args.probe)))
+        return 0
     if cmd == "privacy":
         store.write_setting("hide_addresses", args.action == "on")
         print("box addresses " + ("hidden" if args.action == "on" else "shown") + " in the Desktop and terminal")

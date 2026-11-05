@@ -194,6 +194,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet delegate on\|off\|status` | subagents on the fleet |
 | `hermes fleet aux on\|off\|status [--tasks]` | side tasks on the fleet |
 | `hermes fleet keep on\|off\|status` | keep the routed model in memory |
+| `hermes fleet snapshot [--probe]` | the fleet's state as JSON, for dashboards and status screens (read-only) |
 | `hermes fleet privacy on\|off` | hide box addresses in the Desktop and terminal (screen recordings) |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |
 | `hermes fleet price <in> <out> [--currency CODE]` | cloud price per million tokens, in an ISO 4217 currency (`£ € $ ¥` accepted) |

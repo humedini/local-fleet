@@ -208,3 +208,20 @@ def test_a_manual_primary_change_pauses_routing(hermes):
     assert engine.apply_policy()["applied"] is False            # still paused
     engine.apply_policy(unpin=True)                             # Auto-pick resumes
     assert hermes.cfg["model"]["base_url"] == "http://gx:11434/v1"
+
+
+@respx.mock
+def test_snapshot_export_is_complete_and_honours_privacy(hermes, capsys):
+    import argparse
+    boxes()
+    engine.apply_policy()
+    p = argparse.ArgumentParser()
+    cli.setup_argparse(p)
+    cli.main(p.parse_args(["snapshot"]))
+    snap = json.loads(capsys.readouterr().out)
+    assert snap["schema"] == 1 and snap["applied"]["node_name"] == "gx10" and len(snap["nodes"]) == 2
+    assert all("api_key_env" not in n for n in snap["nodes"])
+    store.write_setting("hide_addresses", True)
+    cli.main(p.parse_args(["snapshot"]))
+    out = capsys.readouterr().out
+    assert "http://" not in out
