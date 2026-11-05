@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .constants import FLEET_FILE, KINDS
+from .constants import FLEET_FILE, KINDS, OSES, VENDORS
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -84,7 +84,7 @@ class Fleet:
 
     def add(self, name: str, url: str, kind: str = "ollama", labels=None,
             api_key_env: str | None = None, enabled: bool = True,
-            capacity_gb: float | None = None) -> dict:
+            capacity_gb: float | None = None, vendor: str | None = None, os_name: str | None = None) -> dict:
         name = (name or "").strip()
         if not name or len(name) > 40 or not re.match(r"^[\w.-]+$", name):
             raise FleetError("name must be 1-40 letters, digits, '.', '_' or '-'")
@@ -95,6 +95,7 @@ class Fleet:
             raise FleetError("--api-key-env takes the NAME of an environment variable, not a key")
         if capacity_gb is not None and not 0 < capacity_gb <= 4096:
             raise FleetError("--capacity-gb must be between 0 and 4096")
+        _check_platform(vendor, os_name)
         for n in self.nodes:
             if n["name"].lower() == name.lower():
                 raise FleetError(f"a node is already called {n['name']!r}")
@@ -110,6 +111,8 @@ class Fleet:
             "enabled": enabled,
             "api_key_env": api_key_env or None,
             "capacity_gb": capacity_gb,
+            "vendor": vendor or None,
+            "os": os_name or None,
             "models": [],
             "last_health": None,
             "created_at": stamp,
@@ -132,6 +135,29 @@ class Fleet:
         self.save()
         return node
 
+    def update(self, ref: str, **fields) -> dict:
+        """Change a node's vendor, os, labels or capacity_gb."""
+        node = self.get(ref)
+        _check_platform(fields.get("vendor"), fields.get("os"))
+        for key in ("vendor", "os", "labels", "capacity_gb"):
+            if fields.get(key) is not None:
+                node[key] = fields[key] or None
+        node["updated_at"] = now_iso()
+        self.save()
+        return node
+
+    def record_perf(self, results: dict[str, dict]) -> None:
+        """Store each bench result (keyed by node id); keep the last good speed when a run is skipped."""
+        for n in self.nodes:
+            r = results.get(n["id"])
+            if r is None:
+                continue
+            if r.get("tps"):
+                n["perf"] = r
+            else:
+                n["perf_note"] = r
+        self.save()
+
     def record_health(self, results: dict[str, dict]) -> None:
         """Store each probe's snapshot (keyed by node id) and the models it saw."""
         for n in self.nodes:
@@ -145,8 +171,41 @@ class Fleet:
         self.save()
 
 
+def _check_platform(vendor, os_name):
+    if vendor and vendor not in VENDORS:
+        raise FleetError(f"--vendor must be one of {', '.join(VENDORS)}")
+    if os_name and os_name not in OSES:
+        raise FleetError(f"--os must be one of {', '.join(OSES)}")
+
+
+# Name hints for boxes whose platform was not given. A guess only; `hermes fleet set` overrides.
+_GUESSES = (
+    (("gx10", "spark", "dgx", "gb10", "jetson", "thor", "rtx", "4090", "5090", "a100", "h100", "nvidia"), "nvidia", "linux"),
+    (("mac", "mini", "studio", "mbp", "macbook", "m1", "m2", "m3", "m4", "m5"), "apple", "macos"),
+    (("strix", "z13", "ryzen", "radeon", "amd", "halo", "framework"), "amd", None),
+    (("arc", "intel", "nuc"), "intel", None),
+)
+
+
+def platform(node: dict) -> dict:
+    """{"vendor", "os", "guessed"} for display: the node's own values, else a guess from its name."""
+    vendor, os_name = node.get("vendor"), node.get("os")
+    guessed = False
+    if not vendor or not os_name:
+        parts = [t for t in re.split(r"[^a-z0-9]+", node.get("name", "").lower()) if t]
+        for hints, v, o in _GUESSES:
+            if any(t == h or (len(h) >= 4 and t.startswith(h)) for t in parts for h in hints):
+                if not vendor:
+                    vendor, guessed = v, True
+                if not os_name and o:
+                    os_name, guessed = o, True
+                break
+    return {"vendor": vendor, "os": os_name, "guessed": guessed}
+
+
 def public_node(node: dict) -> dict:
     """A node as shown to the agent or the Desktop: everything but how its secret is found."""
     out = {k: v for k, v in node.items() if k != "api_key_env"}
     out["needs_key"] = bool(node.get("api_key_env"))
+    out["platform"] = platform(node)
     return out

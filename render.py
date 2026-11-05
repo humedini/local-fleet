@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 
-def _load(h: dict) -> str:
+def _load(h: dict, perf: dict | None = None) -> str:
     bits = []
+    if perf and perf.get("tps"):
+        bits.append(f"{perf['tps']:g}t/s")
     if h.get("latency_ms") is not None:
         bits.append(f"{h['latency_ms']}ms")
     if h.get("load_proxy") is not None:
@@ -16,16 +18,17 @@ def _load(h: dict) -> str:
 def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     h = node.get("last_health") or {}
     status = h.get("status", "unprobed") if node.get("enabled", True) else "disabled"
+    perf = node.get("perf")
     marks = ("  ← active" if node["id"] == active_id else "") + ("  (freest)" if node["id"] == freest_id else "")
     detail = h.get("detail", "") if h.get("detail") not in (None, "ok") else ""
-    return (f"  {node['name']:<12} {status:<9} {_load(h):<22} {node['kind']:<17} {node['base_url']}"
+    return (f"  {node['name']:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {node['base_url']}"
             f"{'  ' + detail if detail else ''}{marks}").rstrip()
 
 
 def nodes_table(nodes: list[dict], active_id: str = "", freest_id: str = "") -> str:
     if not nodes:
         return "No nodes yet. Add one: hermes fleet add --name gx10 --url http://192.168.1.50:11434/v1 --kind ollama"
-    head = f"  {'name':<12} {'status':<9} {'health':<22} {'kind':<17} url"
+    head = f"  {'name':<12} {'status':<9} {'health':<30} {'kind':<17} url"
     return "\n".join([head] + [node_line(n, active_id, freest_id) for n in nodes])
 
 

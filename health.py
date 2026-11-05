@@ -6,8 +6,9 @@ the latency. Kinds with a load signal add it:
   ollama  `GET {origin}/api/ps`: resident models and their memory. Models other than the
           one we want count as load (0.25 each, or memory / capacity when the node's
           `capacity_gb` is set), so a box already holding the wanted model looks freer.
-  vllm    `GET {origin}/metrics` (Prometheus): `vllm:gpu_cache_usage_perc`, else running
-          requests (0.25 each).
+  vllm    `GET {origin}/metrics` (Prometheus): KV-cache usage (`vllm:kv_cache_usage_perc`, or the
+          older `vllm:gpu_cache_usage_perc`), else running requests (0.25 each), plus 0.25 per
+          queued request.
   litellm, openai-compatible  latency only; a LiteLLM node is one gateway and balances itself.
 
 A node whose models answer but whose load endpoint fails is `degraded`, still routable.
@@ -87,10 +88,12 @@ def _vllm_load(client, node, want):
     metrics = {}
     for name, value in _METRIC.findall(r.text):
         metrics[name] = metrics.get(name, 0.0) + float(value)
-    if "vllm:gpu_cache_usage_perc" in metrics:
-        return metrics["vllm:gpu_cache_usage_perc"], None, []
+    queued = 0.25 * metrics.get("vllm:num_requests_waiting", 0.0)
+    for cache in ("vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc"):  # renamed in newer vLLM
+        if cache in metrics:
+            return metrics[cache] + queued, None, []
     if "vllm:num_requests_running" in metrics:
-        return 0.25 * metrics["vllm:num_requests_running"], None, []
+        return 0.25 * metrics["vllm:num_requests_running"] + queued, None, []
     raise ValueError("no vllm load metrics")
 
 
@@ -140,9 +143,13 @@ def routable(node: dict, snap: dict | None, want: str = "") -> bool:
     return not want or want in snap.get("models", [])
 
 
-def score(node: dict, snap: dict, prefer_labels=()) -> tuple:
-    """Lower is freer. Down nodes sort last; preferred labels win ties on load."""
+def score(node: dict, snap: dict, prefer_labels=(), want: str = "") -> tuple:
+    """Lower is freer. Down nodes sort last; preferred labels, then faster boxes, win ties on
+    load. Speed counts only when it was benched on the model being routed (speeds of different
+    models are not comparable)."""
     load = snap.get("load_proxy")
+    perf = node.get("perf") or {}
+    tps = perf.get("tps") if want and perf.get("model") == want else None
     free = snap.get("free_vram_approx")
     lat = snap.get("latency_ms")
     affinity = 0 if set(prefer_labels) & set(node.get("labels", [])) else 1
@@ -150,6 +157,7 @@ def score(node: dict, snap: dict, prefer_labels=()) -> tuple:
         0 if snap["status"] in ("ok", "degraded") else 1e9,
         0.5 if load is None else load,
         affinity if prefer_labels else 0,
+        -tps if tps else 0,
         0 if free is None else -free,
         9999 if lat is None else lat,
         node["name"].lower(),
@@ -161,4 +169,4 @@ def pick_freest(nodes: list[dict], results: dict[str, dict], want: str = "",
     candidates = [n for n in nodes if routable(n, results.get(n["id"]), want)]
     if not candidates:
         return None
-    return min(candidates, key=lambda n: score(n, results[n["id"]], prefer_labels))
+    return min(candidates, key=lambda n: score(n, results[n["id"]], prefer_labels, want))

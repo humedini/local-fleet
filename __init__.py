@@ -28,7 +28,7 @@ def _refresh_on_session_start(**kwargs) -> None:
             last = state.get("last_probe_at")
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds() if last else 1e9
             if age >= float(settings["probe_interval_s"]):
-                engine.apply_policy()
+                engine.apply_policy(auto_bench=True)
         except Exception:
             pass  # a failed background probe must never surface in someone's session
         finally:

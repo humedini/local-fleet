@@ -55,6 +55,15 @@ async def probe():
     return await asyncio.to_thread(lambda: _view(engine.apply_policy(dry_run=True)))
 
 
+@router.post("/bench")
+async def bench(body: dict | None = None):
+    """Measure tokens/sec on every box that has a model in memory (never loads one from here)."""
+    def run():
+        engine.bench()
+        return _view()
+    return await asyncio.to_thread(run)
+
+
 @router.post("/use")
 async def use(body: dict):
     node = str(body.get("node") or "")

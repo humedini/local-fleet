@@ -7,7 +7,7 @@ import sys
 import time
 
 from . import config_write, doctor, engine, store
-from .constants import KINDS, MODES
+from .constants import KINDS, MODES, OSES, VENDORS
 from .fleet import FleetError, public_node
 from .render import decision_text, nodes_table, status_text, target_text
 
@@ -23,6 +23,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--label", action="append", default=[], help="Repeatable, e.g. --label lan")
     p.add_argument("--api-key-env", help="NAME of the env var holding this node's key (never the key)")
     p.add_argument("--capacity-gb", type=float, help="Model memory on the box, for a real free-memory figure")
+    p.add_argument("--vendor", choices=VENDORS, help="Accelerator vendor, for the Desktop icon (else guessed from the name)")
+    p.add_argument("--os", dest="os_name", choices=OSES, help="Operating system, for the Desktop icon")
     for name, hlp in (("rm", "Remove a node"), ("enable", "Enable a node"), ("disable", "Disable a node")):
         sub.add_parser(name, help=hlp).add_argument("node", help="id or name")
     p = sub.add_parser("list", help="List nodes with their last health")
@@ -44,6 +46,15 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("model", nargs="?")
     p = sub.add_parser("model", help="Show or set the model id to run on local nodes ('' = pick per node)")
     p.add_argument("model", nargs="?")
+    p = sub.add_parser("bench", help="Measure generation speed (tokens/sec) on each box")
+    p.add_argument("node", nargs="*", help="ids or names (default: every enabled box)")
+    p.add_argument("--load", action="store_true", help="Load the model if it is not in memory (slow, uses memory)")
+    p = sub.add_parser("set", help="Set a box's vendor / OS (for the Desktop icons), labels or capacity")
+    p.add_argument("node", help="id or name")
+    p.add_argument("--vendor", choices=VENDORS)
+    p.add_argument("--os", dest="os_name", choices=OSES)
+    p.add_argument("--label", action="append", help="Replaces the labels; repeatable")
+    p.add_argument("--capacity-gb", type=float)
     sub.add_parser("endpoint", help="Show the primary endpoint Hermes is using")
     sub.add_parser("restore", help="Put back the primary you had before local-fleet")
     parser.set_defaults(func=main)
@@ -104,7 +115,7 @@ def _watch(args) -> int:
     last = None
     try:
         while True:
-            d = engine.apply_policy()
+            d = engine.apply_policy(auto_bench=True)
             key = json.dumps(d.get("target"), sort_keys=True)
             stamp = time.strftime("%H:%M:%S")
             if key != last or d.get("applied"):
@@ -146,7 +157,7 @@ def _dispatch(cmd: str, args) -> int:
         return _setup()
     if cmd == "add":
         node = store.fleet().add(args.name, args.url, args.kind, args.label, args.api_key_env,
-                                 capacity_gb=args.capacity_gb)
+                                 capacity_gb=args.capacity_gb, vendor=args.vendor, os_name=args.os_name)
         print(f"added {node['name']} ({node['id']}) {node['base_url']} — probe with: hermes fleet status")
         return 0
     if cmd in ("rm", "enable", "disable"):
@@ -199,6 +210,24 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "model":
         return _show_or_set("default_model", args.model, "local model")
+    if cmd == "bench":
+        nodes, out = engine.bench(args.node or None, load=args.load)
+        for n in nodes:
+            r = out.get(n["id"], {})
+            if r.get("tps"):
+                extra = f", prompt {r['prompt_tps']:g} tok/s" if r.get("prompt_tps") else ""
+                extra += f", first token {r['ttft_ms']} ms" if r.get("ttft_ms") else ""
+                print(f"  {n['name']:<12} {r['tps']:>6.1f} tok/s  {r['model']}{extra}")
+            else:
+                print(f"  {n['name']:<12}  skipped: {r.get('skipped') or r.get('error')}")
+        return 0
+    if cmd == "set":
+        node = store.fleet().update(args.node, vendor=args.vendor, os=args.os_name, labels=args.label,
+                                    capacity_gb=args.capacity_gb)
+        from .fleet import platform
+        p = platform(node)
+        print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'} labels={','.join(node['labels']) or '-'}")
+        return 0
     if cmd == "endpoint":
         p = config_write.current_primary()
         applied = store.load_state().get("applied")

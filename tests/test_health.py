@@ -108,3 +108,19 @@ def test_unknown_load_ranks_between_idle_and_busy():
 def test_label_preference_breaks_load_ties():
     res = {"a": snap(lat=50), "b": snap(lat=5)}
     assert pick_freest([GX, S2], res, prefer_labels=["lan"])["name"] == "gx10"
+
+
+def test_speed_breaks_load_ties_only_for_the_routed_model():
+    fast = dict(GX, perf={"tps": 90.0, "model": "qwen"})
+    slow = dict(S2, perf={"tps": 20.0, "model": "qwen"})
+    other = dict(S2, perf={"tps": 200.0, "model": "tiny"})
+    res = {"a": snap(), "b": snap()}
+    assert pick_freest([slow, fast], res, want="qwen")["name"] == "gx10"
+    assert pick_freest([GX, other], res, want="qwen")["name"] == "gx10"   # tiny-model speed ignored; name tie-break
+
+
+@respx.mock
+def test_vllm_new_metric_name_and_queue():
+    respx.get("http://vl:8000/v1/models").respond(json=models("m"))
+    respx.get("http://vl:8000/metrics").respond(text='vllm:kv_cache_usage_perc{m="m"} 0.3\nvllm:num_requests_waiting{m="m"} 2\n')
+    assert probe_all([VL])["c"]["load_proxy"] == 0.8

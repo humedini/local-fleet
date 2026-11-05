@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from . import config_write, store
 from .fleet import now_iso
+from .bench import bench_node
 from .health import probe_all
 from .routing import decide, same_target
 
@@ -13,13 +16,49 @@ SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
 HISTORY_LEN = 25  # routing changes kept for the Desktop timeline
 
 
-def probe(settings: dict | None = None):
-    """Probe every enabled node and record the results. Returns (settings, fleet, results)."""
+def _age_s(iso: str | None) -> float:
+    if not iso:
+        return 1e12
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(iso)).total_seconds()
+
+
+def run_bench(f, results: dict, settings: dict, nodes: list[dict], load: bool = False) -> dict:
+    """Bench `nodes` in parallel (different machines) and record what came back."""
+    want = settings.get("default_model") or ""
+    if not nodes:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(4, len(nodes))) as pool:
+        futures = {n["id"]: pool.submit(bench_node, n, results.get(n["id"]), want, load) for n in nodes}
+        out = {nid: fu.result() for nid, fu in futures.items()}
+    f.record_perf(out)
+    return out
+
+
+def _due_for_bench(f, settings: dict) -> list[dict]:
+    every = float(settings.get("bench_interval_s") or 0)
+    if every <= 0:
+        return []
+    return [n for n in f.enabled()
+            if min(_age_s((n.get("perf") or {}).get("at")), _age_s((n.get("perf_note") or {}).get("at"))) >= every]
+
+
+def bench(refs: list[str] | None = None, load: bool = False) -> tuple[list[dict], dict]:
+    """`hermes fleet bench`: probe, then bench the named nodes (all enabled ones by default)."""
+    settings, f, results = probe()
+    nodes = [f.get(r) for r in refs] if refs else f.enabled()
+    return nodes, run_bench(f, results, settings, nodes, load)
+
+
+def probe(settings: dict | None = None, auto_bench: bool = False):
+    """Probe every enabled node and record the results. Returns (settings, fleet, results).
+    With auto_bench, boxes whose speed is older than bench_interval_s are benched too."""
     settings = settings or store.read_settings()
     f = store.fleet()
     results = probe_all(f.enabled(), timeout=float(settings["probe_timeout_s"]),
                         want=settings.get("default_model") or "")
     f.record_health(results)
+    if auto_bench:
+        run_bench(f, results, settings, _due_for_bench(f, settings))
     stamp = now_iso()
     state = store.load_state()
     series = state.get("series") or {}
@@ -38,14 +77,15 @@ def _cloud_ready(target: dict) -> bool:
     return bool(target.get("provider") and target.get("model"))
 
 
-def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = False) -> dict:
+def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = False,
+                 auto_bench: bool = False) -> dict:
     """Probe, decide and, unless dry_run, write the primary when it changed.
 
     `pin` is a node id/name to use now and keep while it stays healthy (`hermes fleet use gx10`);
     `unpin` drops any pin first (`use --freest`, a mode change).
     """
     with _lock:
-        settings, f, results = probe()
+        settings, f, results = probe(auto_bench=auto_bench)
         state = store.load_state()
         applied_now = dict(state.get("applied") or {})
         current = dict(applied_now)

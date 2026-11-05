@@ -17,6 +17,9 @@ const PAGE_PATH = '/local-fleet'
 
 const CSS = `
 .hs-chip{display:inline-flex;align-items:center;gap:6px}
+.hs-marks{display:inline-flex;align-items:center;gap:3px;flex-shrink:0}
+.hs-marks svg{display:block}
+.hs-tps{color:var(--ui-text-secondary);font-variant-numeric:tabular-nums}
 .hs-dot{width:7px;height:7px;border-radius:999px;flex-shrink:0;background:var(--ui-text-quaternary)}
 .hs-dot[data-tone=ok]{background:color-mix(in srgb,${SPARK_GREEN} 75%,var(--ui-text-tertiary))}
 .hs-dot[data-tone=spark]{background:${SPARK_GREEN};box-shadow:0 0 0 2px color-mix(in srgb,${SPARK_GREEN} 25%,transparent)}
@@ -89,8 +92,10 @@ const CSS = `
 .hs-card[data-active=true]{border-color:${SPARK_GREEN};box-shadow:0 0 0 1px color-mix(in srgb,${SPARK_GREEN} 40%,transparent)}
 .hs-card-head{display:flex;align-items:center;gap:7px;font-weight:600}
 .hs-card-head .hs-lat{margin-left:auto;font-weight:400}
+.hs-card-perf{font-size:11px;color:var(--ui-text-tertiary);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-card-perf b{font-size:16px;font-weight:600;color:var(--ui-text-primary);font-variant-numeric:tabular-nums}
 .hs-card-sub{font-size:11px;color:var(--ui-text-tertiary);margin:2px 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hs-card svg{display:block;width:100%;height:38px}
+.hs-card .hs-spark{display:block;width:100%;height:38px;margin-top:4px}
 .hs-models{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .hs-models span{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-tertiary,rgba(127,127,127,.12));color:var(--ui-text-secondary)}
 .hs-models span[data-want=true]{color:#000;background:${SPARK_GREEN}}
@@ -102,6 +107,59 @@ const CSS = `
 .hs-ev[data-via=failover]::before{background:var(--ui-orange,#df6500)}
 .hs-ev small{display:block;color:var(--ui-text-tertiary);font-size:11px}
 `
+
+
+// Platform marks (16x16), drawn here because a disk plugin may import only the SDK and React.
+// Vendor first, then the OS when it adds something (an Apple box is macOS already).
+function Mark({ kind, x = 0, y = 0, size = 16, title }) {
+  const g = (children) => jsxs('svg', { x, y, width: size, height: size, viewBox: '0 0 16 16', role: 'img', 'aria-label': title || kind, className: 'hs-mark', children: [
+    title && jsx('title', { children: title }), ...children] })
+  const label = (fill, text, fg = '#fff', fs = 5.6) => g([
+    jsx('rect', { x: 0.5, y: 2.5, width: 15, height: 11, rx: 2.5, fill }),
+    jsx('text', { x: 8, y: 10, textAnchor: 'middle', style: { fill: fg, fontSize: fs, fontWeight: 800, fontFamily: 'system-ui,sans-serif', letterSpacing: '-0.02em' }, children: text })])
+  switch (kind) {
+    case 'nvidia': return g([
+      jsx('rect', { x: 0.5, y: 0.5, width: 15, height: 15, rx: 3, fill: SPARK_GREEN }),
+      jsx('path', { d: 'M3 8.2c2.2-3.3 6.8-3.6 10-.2-3.2 3.4-7.8 3.1-10 .2z', fill: 'none', stroke: '#000', strokeWidth: 1.3 }),
+      jsx('circle', { cx: 8.2, cy: 8.1, r: 1.6, fill: '#000' })])
+    case 'apple': return g([
+      jsx('path', { d: 'M8 4.6c1.2-.9 3.4-.9 4.4.8 1 1.7.6 4.6-.9 6.6-.7.9-1.4 1.6-2.3 1.4-.6-.1-.8-.4-1.2-.4s-.6.3-1.2.4c-.9.2-1.6-.5-2.3-1.4C3 10 2.6 7.1 3.6 5.4c1-1.7 3.2-1.7 4.4-.8z', fill: 'var(--ui-text-primary)' }),
+      jsx('path', { d: 'M8.4 4c0-1.3.9-2.3 2.1-2.5.1 1.3-.8 2.4-2.1 2.5z', fill: 'var(--ui-text-primary)' })])
+    case 'amd': return label('#ED1C24', 'AMD')
+    case 'intel': return label('#0071C5', 'intel', '#fff', 5.2)
+    case 'windows': return g([
+      jsx('rect', { x: 1.5, y: 1.5, width: 6, height: 6, fill: '#00A4EF' }), jsx('rect', { x: 8.5, y: 1.5, width: 6, height: 6, fill: '#00A4EF' }),
+      jsx('rect', { x: 1.5, y: 8.5, width: 6, height: 6, fill: '#00A4EF' }), jsx('rect', { x: 8.5, y: 8.5, width: 6, height: 6, fill: '#00A4EF' })])
+    case 'linux': return g([
+      jsx('ellipse', { cx: 8, cy: 9.2, rx: 4.6, ry: 5.8, fill: 'var(--ui-text-primary)' }),
+      jsx('ellipse', { cx: 8, cy: 10.6, rx: 2.8, ry: 3.9, fill: 'var(--ui-bg-elevated,#26262b)' }),
+      jsx('circle', { cx: 6.6, cy: 5.6, r: 0.8, fill: 'var(--ui-bg-elevated,#26262b)' }), jsx('circle', { cx: 9.4, cy: 5.6, r: 0.8, fill: 'var(--ui-bg-elevated,#26262b)' }),
+      jsx('path', { d: 'M6.8 7l1.2.9 1.2-.9z', fill: '#F5A623' }),
+      jsx('ellipse', { cx: 5.6, cy: 15, rx: 1.8, ry: 0.8, fill: '#F5A623' }), jsx('ellipse', { cx: 10.4, cy: 15, rx: 1.8, ry: 0.8, fill: '#F5A623' })])
+    default: return null
+  }
+}
+
+const VENDOR_TITLE = { nvidia: 'NVIDIA', apple: 'Apple silicon', amd: 'AMD', intel: 'Intel' }
+const OS_TITLE = { linux: 'Linux', macos: 'macOS', windows: 'Windows' }
+
+function marksFor(n) {
+  const p = n.platform || {}
+  const out = []
+  if (VENDOR_TITLE[p.vendor]) out.push([p.vendor, VENDOR_TITLE[p.vendor] + (p.guessed ? ' (guessed from the name)' : '')])
+  if (p.os && OS_TITLE[p.os] && !(p.os === 'macos' && p.vendor === 'apple')) out.push([p.os, OS_TITLE[p.os]])
+  return out
+}
+
+function Marks({ n, size = 14 }) {
+  return jsx('span', { className: 'hs-marks', children: marksFor(n).map(([k, t]) =>
+    jsx('svg', { width: size, height: size, viewBox: '0 0 16 16', children: jsx(Mark, { kind: k, title: t }) }, k)) })
+}
+
+function speed(n) {
+  const p = n.perf || {}
+  return p.tps ? `${p.tps >= 100 ? Math.round(p.tps) : p.tps} tok/s` : ''
+}
 
 function ago(iso) {
   if (!iso) return ''
@@ -141,12 +199,14 @@ function NodeRow({ node, active, freest, want }) {
   else if (missing) sub = `skipped · no ${want}`
   else {
     const bits = [load === null ? 'load unknown' : load < 0.05 ? 'idle' : `${Math.round(load * 100)}% busy`]
+    if (speed(node)) bits.push(speed(node))
     if (h.free_vram_approx) bits.push(`${Math.round(h.free_vram_approx / 1e9)} GB free`)
     sub = bits.join(' · ')
   }
   return jsxs('div', { className: 'hs-row', 'data-active': active, 'data-skipped': Boolean(off || missing || h.status === 'down'), children: [
     jsx('span', { className: 'hs-dot', 'data-tone': tone }),
     jsxs('div', { className: 'hs-name', children: [
+      jsx(Marks, { n: node, size: 13 }),
       jsx('span', { children: node.name }),
       active && jsx('em', { className: 'hs-badge', 'data-kind': 'active', style: { fontStyle: 'normal' }, children: 'active' }),
       !active && freest && jsx('em', { className: 'hs-badge', 'data-kind': 'freest', style: { fontStyle: 'normal' }, children: 'freest' })
@@ -372,12 +432,13 @@ function FleetMap({ s }) {
       const missing = s.local_model && h.status && h.status !== 'down' && !(h.models || []).includes(s.local_model)
       const resident = (h.resident || []).slice(0, 2).join(', ')
       const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `no ${s.local_model}`
-        : [h.latency_ms != null ? `${h.latency_ms} ms` : null, typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
+        : [speed(n) || (h.latency_ms != null ? `${h.latency_ms} ms` : null), typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
            h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
       return jsxs('g', { children: [
         jsx(IsoServer, { x, y, tone, active, load: h.load_proxy }),
         jsx('circle', { cx: x + 62, cy: y - 22, r: 3.5, fill: active ? SPARK_GREEN : TONE_FILL[tone] }),
-        jsx('text', { x: x + 70, y: y - 18, style: { fontWeight: 600 }, children: n.name + (active ? '  ← routed' : '') }),
+        ...marksFor(n).map(([k, t], j) => jsx(Mark, { kind: k, title: t, x: x + 70 + j * 19, y: y - 31, size: 16 }, k)),
+        jsx('text', { x: x + 72 + marksFor(n).length * 19, y: y - 18, style: { fontWeight: 600 }, children: n.name + (active ? '  ← routed' : '') }),
         jsx('text', { className: 't2', x: x + 70, y: y - 3, children: line2 }),
         resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 34 ? resident.slice(0, 33) + '…' : resident}` })
       ] }, n.id)
@@ -387,12 +448,12 @@ function FleetMap({ s }) {
 
 function Sparkline({ points }) {
   const pts = (points || []).filter(p => p.lat != null)
-  if (pts.length < 2) return jsx('svg', { viewBox: '0 0 200 38', children: jsx('text', { className: 't2', x: 0, y: 22, style: { fill: 'var(--ui-text-quaternary)', fontSize: 11 }, children: 'collecting…' }) })
+  if (pts.length < 2) return jsx('svg', { className: 'hs-spark', viewBox: '0 0 200 38', children: jsx('text', { className: 't2', x: 0, y: 22, style: { fill: 'var(--ui-text-quaternary)', fontSize: 11 }, children: 'collecting…' }) })
   const max = Math.max(...pts.map(p => p.lat), 10)
   const xs = i => (i / (pts.length - 1)) * 200
   const lat = pts.map((p, i) => `${xs(i).toFixed(1)},${(34 - (p.lat / max) * 30).toFixed(1)}`).join(' ')
   const load = pts.map((p, i) => `${xs(i).toFixed(1)},${(36 - (p.load || 0) * 32).toFixed(1)}`).join(' ')
-  return jsxs('svg', { viewBox: '0 0 200 38', preserveAspectRatio: 'none', children: [
+  return jsxs('svg', { className: 'hs-spark', viewBox: '0 0 200 38', preserveAspectRatio: 'none', children: [
     jsx('polygon', { points: `0,38 ${load} 200,38`, fill: SPARK_GREEN, opacity: 0.18 }),
     jsx('polyline', { points: lat, fill: 'none', stroke: 'var(--ui-text-secondary)', strokeWidth: 1.2, vectorEffect: 'non-scaling-stroke' })
   ] })
@@ -406,8 +467,14 @@ function NodeCard({ n, s }) {
   return jsxs('div', { className: 'hs-card', 'data-active': active, children: [
     jsxs('div', { className: 'hs-card-head', children: [
       jsx('span', { className: 'hs-dot', 'data-tone': active ? 'spark' : { ok: 'ok', warn: 'warn', bad: 'bad' }[nodeTone(n)] || '' }),
+      jsx(Marks, { n, size: 15 }),
       jsx('span', { children: n.name }),
       jsx('span', { className: 'hs-lat', children: h.latency_ms != null ? `${h.latency_ms} ms` : '' })
+    ] }),
+    jsxs('div', { className: 'hs-card-perf', children: [
+      jsx('b', { children: (n.perf || {}).tps ? `${(n.perf || {}).tps}` : '—' }),
+      jsx('span', { children: (n.perf || {}).tps ? ` tok/s · ${(n.perf || {}).model}${(n.perf || {}).prompt_tps ? ` · prompt ${(n.perf || {}).prompt_tps} tok/s` : ''} · ${ago((n.perf || {}).at)}`
+        : ` tok/s · ${((n.perf_note || {}).skipped) || 'not benched yet'}` })
     ] }),
     jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
     jsx(Sparkline, { points: (s.series || {})[n.id] }),
@@ -465,6 +532,8 @@ function FleetPage({ ctx }) {
           onClick: () => { if (s.mode !== m) { haptic('tap'); run('mode', '/mode', { mode: m }) } }, children: label })) }),
       jsx(Button, { size: 'sm', disabled: Boolean(busy), onClick: () => run('use', '/use', { node: 'freest' }), children: busy === 'use' ? 'Routing…' : 'Use freest' }),
       jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), onClick: () => run('probe', '/probe'), children: busy === 'probe' ? 'Probing…' : 'Probe now' }),
+      jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), title: 'Short generation on each box that has a model in memory',
+        onClick: () => run('bench', '/bench'), children: busy === 'bench' ? 'Benchmarking…' : 'Benchmark' }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
     jsx(FleetMap, { s }),
