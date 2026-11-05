@@ -229,6 +229,7 @@ function routeLine(s) {
   if (a.kind === 'local') return ['Routed to ', dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name, ` · ${a.model || ''}`]
   if (a.kind === 'cloud') return ['Routed to cloud ', `${a.provider}/${a.model}`, a.via === 'failover' ? ' · failover' : '']
   const p = s.primary || {}
+  if (s.paused) return ['Paused: you changed the model yourself · Hermes uses ', p.provider || 'its own primary', ' · Auto-pick box resumes']
   return ['Not routed by Local Fleet · Hermes uses ', p.provider || 'its own primary', p.default ? ` · ${p.default}` : '']
 }
 
@@ -238,6 +239,7 @@ function chip(s, failed) {
   if (!s.nodes || !s.nodes.length) return { tone: '', text: 'fleet · no boxes' }
   const a = s.applied || {}
   if (s.down) return { tone: 'bad', text: 'fleet · all down' }
+  if (s.paused) return { tone: 'warn', text: 'fleet · paused' }
   if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name}` }
   if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'fleet · cloud' }
   return { tone: '', text: `fleet · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }

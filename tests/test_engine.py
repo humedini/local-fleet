@@ -173,3 +173,38 @@ def test_privacy_hides_addresses_in_text_output(hermes):
     out = slash.handle("status")
     assert "http://" not in out and "(address hidden)" in out
     render.HIDE["on"] = False
+
+
+@respx.mock
+def test_auto_pick_clears_a_pin_even_when_the_box_stays_the_same(hermes):
+    boxes()                                         # gx10 is the least busy
+    engine.apply_policy(pin="gx10")
+    assert store.load_state()["applied"]["pinned"] is True
+    d = engine.apply_policy(unpin=True)             # auto-pick also lands on gx10: nothing to rewrite...
+    assert d["target"]["node_name"] == "gx10"
+    assert "pinned" not in store.load_state()["applied"]   # ...but the pin must still go
+    boxes(gx_load=("a", "b", "c", "d"))             # gx10 becomes clearly busier
+    assert engine.apply_policy()["target"]["node_name"] == "spark2"
+
+
+@respx.mock
+def test_pinning_the_current_box_records_the_pin_without_rewriting_config(hermes):
+    boxes()
+    engine.apply_policy()                           # routed to gx10 automatically
+    n = len(hermes.writes)
+    engine.apply_policy(pin="gx10")
+    assert store.load_state()["applied"]["pinned"] is True and len(hermes.writes) == n
+
+
+@respx.mock
+def test_a_manual_primary_change_pauses_routing(hermes):
+    boxes()
+    engine.apply_policy()                                       # routed to gx10
+    hermes.cfg["model"] = {"provider": "anthropic", "default": "claude-x"}   # the user switches by hand
+    d = engine.apply_policy()
+    assert "outside Local Fleet" in d["warning"] and not d["applied"]
+    assert hermes.cfg["model"]["provider"] == "anthropic"       # left alone
+    assert not store.load_state().get("applied")
+    assert engine.apply_policy()["applied"] is False            # still paused
+    engine.apply_policy(unpin=True)                             # Auto-pick resumes
+    assert hermes.cfg["model"]["base_url"] == "http://gx:11434/v1"

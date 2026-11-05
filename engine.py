@@ -90,6 +90,16 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     return settings, f, results
 
 
+def _changed_outside(state: dict) -> bool:
+    """True when the plugin routed Hermes but the primary in config is no longer what it wrote."""
+    applied = state.get("applied") or {}
+    if not applied.get("kind"):
+        return False
+    want = config_write.model_block(applied, None)
+    have = config_write.current_primary()
+    return any(have.get(k) != want.get(k) for k in ("provider", "default", "base_url"))
+
+
 def _cloud_ready(target: dict) -> bool:
     return bool(target.get("provider") and target.get("model"))
 
@@ -104,6 +114,18 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
     with store.transaction():
         settings, f, results = probe(auto_bench=auto_bench)
         state = store.load_state()
+        manual = _changed_outside(state)
+        if manual and not (pin or unpin):
+            # The user changed the primary themselves: respect it. Routing stays paused until they
+            # choose a box or Auto-pick again (pin / unpin); the saved original is stale now.
+            state.pop("applied", None)
+            state.pop("original_model", None)
+            state["paused"] = True
+            store.save_state({**store.load_state(), "applied": None, "original_model": None, "paused": True})
+        if pin or unpin:
+            state.pop("paused", None)
+        elif state.get("paused"):
+            dry_run = True
         applied_now = dict(state.get("applied") or {})
         current = dict(applied_now)
         if unpin:  # an explicit "go freest": no pin, and no stickiness to the active node
@@ -123,7 +145,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                                    "settings cloud_provider + cloud_model); primary left as is")
             store.update_state(last_decision=decision)
             return decision
-        changed = decision["changed"] or (bool(pin) and not applied_now.get("pinned"))
+        changed = decision["changed"]
         decision["applied"] = False
         if not dry_run and changed and target["kind"] == "local" and settings.get("warm_before_switch", True):
             snap = results.get(target["node_id"]) or {}
@@ -139,6 +161,12 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                 applied["pinned"] = True
             state["applied"] = {k: v for k, v in applied.items() if v is not None}
             decision["applied"] = True
+        elif not dry_run and state.get("applied"):
+            # Same box as before, so the config is not rewritten; the pin is policy and still changes.
+            if pin and target.get("node_id") == current["node_id"]:
+                state["applied"]["pinned"] = True
+            elif unpin:
+                state["applied"].pop("pinned", None)
         if not dry_run and _cloud_ready({"provider": settings.get("cloud_provider"),
                                          "model": settings.get("cloud_model")}):
             decision["fallback_added"] = config_write.ensure_fallback(settings["cloud_provider"], settings["cloud_model"])
@@ -146,12 +174,18 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
             decision["keep"] = _keep_loaded(settings, f, results, applied_now, state.get("applied") or {})
         if not dry_run or aux_follow:  # side tasks are their own opt-in, independent of main routing
             decision["aux"] = _follow_aux(settings, f, results, decision, state)
+        if state.get("paused"):
+            decision["warning"] = ("Hermes's primary was changed outside Local Fleet, so routing is paused; "
+                                   "Auto-pick box or `hermes fleet use --best` resumes it")
         state["last_decision"] = decision
         if decision["applied"]:
             event = {"at": decision["at"], "reason": decision["reason"], "kind": target["kind"],
                      "node": target.get("node_name"), "model": target.get("model"), "via": target.get("via")}
             state["history"] = ((store.load_state().get("history") or []) + [event])[-HISTORY_LEN:]
-        store.save_state({**store.load_state(), **state})
+        merged = {**store.load_state(), **state}
+        if not state.get("paused"):
+            merged.pop("paused", None)
+        store.save_state(merged)
         return decision
 
 
@@ -293,6 +327,7 @@ def snapshot() -> dict:
         "aux": state.get("aux_applied"),
         "keep_loaded": bool(settings.get("keep_loaded")),
         "hide_addresses": bool(settings.get("hide_addresses")),
+        "paused": bool(state.get("paused")),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],
         "history": state.get("history") or [],
