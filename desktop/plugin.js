@@ -469,7 +469,7 @@ function wirePath(a, b) {
 
 function Packets({ id, color }) {
   return [0, 0.6, 1.2].map(delay => jsx('circle', { r: 3.2, fill: color, children:
-    jsx('animateMotion', { dur: '1.8s', begin: `${delay}s`, repeatCount: 'indefinite', children: jsx('mpath', { href: `#${id}` }) }) }, delay))
+    jsx('animateMotion', { dur: '1.8s', begin: `-${delay}s`, repeatCount: 'indefinite', children: jsx('mpath', { href: `#${id}` }) }) }, delay))
 }
 
 function liveCalls(s, n) {
