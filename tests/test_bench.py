@@ -51,3 +51,13 @@ def test_skips_busy_and_unhealthy_boxes():
 def test_errors_come_back_as_data():
     respx.post("http://gx:11434/api/generate").mock(side_effect=httpx.ConnectError("x"))
     assert "ConnectError" in bench_node(OL, snap(), "")["error"]
+
+
+@respx.mock
+def test_bench_keeps_the_models_remaining_idle_time():
+    from datetime import datetime, timedelta, timezone
+    route = respx.post("http://gx:11434/api/generate").respond(json={"eval_count": 10, "eval_duration": 1_000_000_000})
+    at = (datetime.now(timezone.utc) + timedelta(seconds=300)).isoformat().replace("+00:00", "Z")
+    bench_node(OL, dict(snap(), expires={"gemma": at}), "")
+    sent = json.loads(route.calls.last.request.content)["keep_alive"]
+    assert sent.endswith("s") and 290 <= int(sent[:-1]) <= 300

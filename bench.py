@@ -13,7 +13,9 @@ asked to load one, and skips boxes that look busy.
 from __future__ import annotations
 
 import json
+import re
 import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -40,10 +42,26 @@ def pick_model(node: dict, snap: dict, want: str, load: bool) -> tuple[str, str]
     return (usable[0], "") if usable else ("", "no models")
 
 
-def _ollama(client, node, model):
-    r = client.post(f"{origin(node['base_url'])}/api/generate", headers=node_headers(node), json={
-        "model": model, "prompt": PROMPT, "stream": False,
-        "options": {"num_predict": MAX_TOKENS, "temperature": 0}})
+def keep_alive_left(snap: dict, model: str) -> str | None:
+    """The model's remaining idle time, so a bench does not keep it in memory any longer than it
+    would have stayed anyway (every Ollama request otherwise restarts the unload timer)."""
+    at = (snap.get("expires") or {}).get(model)
+    if not at:
+        return None
+    try:
+        stamp = re.sub(r"(\.\d{6})\d+", r"\1", at.replace("Z", "+00:00"))  # Ollama sends nanoseconds
+        left = (datetime.fromisoformat(stamp) - datetime.now(timezone.utc)).total_seconds()
+    except ValueError:
+        return None
+    return f"{max(1, int(left))}s"
+
+
+def _ollama(client, node, model, keep_alive=None):
+    body = {"model": model, "prompt": PROMPT, "stream": False,
+            "options": {"num_predict": MAX_TOKENS, "temperature": 0}}
+    if keep_alive:
+        body["keep_alive"] = keep_alive
+    r = client.post(f"{origin(node['base_url'])}/api/generate", headers=node_headers(node), json=body)
     r.raise_for_status()
     d = r.json()
     ev, evd = d.get("eval_count") or 0, d.get("eval_duration") or 0
@@ -95,7 +113,10 @@ def bench_node(node: dict, snap: dict, want: str = "", load: bool = False, timeo
         return {"skipped": why, "at": now_iso()}
     try:
         with httpx.Client(timeout=httpx.Timeout(timeout, connect=5), transport=transport) as client:
-            out = (_ollama if node.get("kind") == "ollama" else _openai)(client, node, model)
+            if node.get("kind") == "ollama":
+                out = _ollama(client, node, model, None if load else keep_alive_left(snap, model))
+            else:
+                out = _openai(client, node, model)
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         return {"error": f"{type(e).__name__}: {e}"[:160], "model": model, "at": now_iso()}
     return {**out, "model": model, "at": now_iso()}

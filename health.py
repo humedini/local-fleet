@@ -71,6 +71,7 @@ def _ollama_load(client, node, want):
     r.raise_for_status()
     loaded = r.json().get("models") or []
     resident = [m.get("name") or m.get("model") for m in loaded]
+    expires = {m.get("name") or m.get("model"): m.get("expires_at") for m in loaded if m.get("expires_at")}
     others = [m for m in loaded if (m.get("name") or m.get("model")) != want]
     cap = float(node.get("capacity_gb") or 0) * 1e9
     used = sum(int(m.get("size_vram") or m.get("size") or 0) for m in loaded)
@@ -79,7 +80,7 @@ def _ollama_load(client, node, want):
         free = max(0, int(cap - used))
     else:
         load, free = 0.25 * len(others), None
-    return load, free, resident
+    return load, free, resident, expires
 
 
 def _vllm_load(client, node, want):
@@ -91,9 +92,9 @@ def _vllm_load(client, node, want):
     queued = 0.25 * metrics.get("vllm:num_requests_waiting", 0.0)
     for cache in ("vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc"):  # renamed in newer vLLM
         if cache in metrics:
-            return metrics[cache] + queued, None, []
+            return metrics[cache] + queued, None, [], {}
     if "vllm:num_requests_running" in metrics:
-        return 0.25 * metrics["vllm:num_requests_running"] + queued, None, []
+        return 0.25 * metrics["vllm:num_requests_running"] + queued, None, [], {}
     raise ValueError("no vllm load metrics")
 
 
@@ -119,10 +120,12 @@ def probe_node(node: dict, client: httpx.Client, want: str = "") -> dict:
     if loader is None:
         return _snapshot("ok", latency, detail, models)
     try:
-        load, free, resident = loader(client, node, want)
+        load, free, resident, expires = loader(client, node, want)
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         return _snapshot("degraded", latency, f"load unknown ({type(e).__name__})", models)
-    return _snapshot("ok", latency, detail, models, load, free, resident)
+    snap = _snapshot("ok", latency, detail, models, load, free, resident)
+    snap["expires"] = expires
+    return snap
 
 
 def probe_all(nodes: list[dict], timeout: float = 2.0, want: str = "",
