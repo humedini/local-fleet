@@ -25,7 +25,7 @@ DEFAULTS = {
     # Load the model on a box before switching Hermes to it (Ollama), and how long to wait.
     "warm_before_switch": True,
     "warm_timeout_s": 120.0,
-    # Auxiliary tasks to run on the freest box (hermes fleet aux on); empty = off.
+    # Auxiliary tasks to run on the least busy box (hermes fleet aux on); empty = off.
     "aux_tasks": [],
     # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.
     "price_in_per_m": 0.0,

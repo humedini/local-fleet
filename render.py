@@ -19,7 +19,7 @@ def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     h = node.get("last_health") or {}
     status = h.get("status", "unprobed") if node.get("enabled", True) else "disabled"
     perf = node.get("perf")
-    marks = ("  ← active" if node["id"] == active_id else "") + ("  (freest)" if node["id"] == freest_id else "")
+    marks = ("  ← active" if node["id"] == active_id else "") + ("  (least busy)" if node["id"] == freest_id else "")
     detail = h.get("detail", "") if h.get("detail") not in (None, "ok") else ""
     return (f"  {node['name']:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {node['base_url']}"
             f"{'  ' + detail if detail else ''}{marks}").rstrip()

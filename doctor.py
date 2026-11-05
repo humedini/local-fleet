@@ -61,7 +61,7 @@ def run() -> tuple[bool, list[str]]:
     keys = [n["api_key_env"] for n in f.nodes if n.get("api_key_env")]
     lines.append(f"  secrets: {', '.join(keys) if keys else 'none required for current nodes'}")
     lines.append("  OK — ready to route" if ok and freest else
-                 "  OK — no healthy local; cloud would be primary" if ok else "  NOT READY")
+                 "  OK — no box available; Hermes would use cloud" if ok else "  NOT READY")
     return ok, lines
 
 

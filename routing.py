@@ -83,16 +83,16 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
 
     pinned = next((n for n in healthy if current.get("pinned") and n["id"] == current.get("node_id")), None)
     if pinned is not None:
-        target = _local(pinned, results[pinned["id"]], want, current, f"pinned to {pinned['name']}")
+        target = _local(pinned, results[pinned["id"]], want, current, f"kept on {pinned['name']} (you chose it)")
     elif mode == "prefer-cloud":
         target = _cloud(settings, "prefer-cloud mode")
     elif freest is None:
-        why = f"no healthy local serving {want}" if want and enabled else "no healthy local"
-        target = _cloud(settings, f"{why}; cloud primary")
+        why = f"no box available with {want}" if want and enabled else "no box available"
+        target = _cloud(settings, f"{why}, using cloud")
         target["via"] = "failover"
     elif (current.get("kind") == "cloud" and current.get("via") == "failover"
           and not settings.get("failback_enabled", True)):
-        target = _cloud(settings, f"{freest['name']} is back but failback is off")
+        target = _cloud(settings, f"{freest['name']} is back, but switching back is off")
         target["via"] = "failover"
     elif _keep_current(current, enabled, results, freest, want, settings):
         node = next(n for n in enabled if n["id"] == current["node_id"])
@@ -100,7 +100,7 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
     else:
         back = current.get("kind") == "cloud" and current.get("via") == "failover"
         target = _local(freest, results[freest["id"]], want, current,
-                        f"failback to {freest['name']}" if back else f"freest local: {freest['name']}")
+                        f"back on {freest['name']} (it recovered)" if back else f"least busy box: {freest['name']}")
 
     return {
         "at": now_iso(),

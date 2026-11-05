@@ -2,7 +2,7 @@
 
 ## Short (≤200 chars)
 
-Route Hermes across your own inference boxes (DGX Spark, Ollama, vLLM): health probes, freest-box pick, prefer-local / cloud / auto, cloud failover and failback, Desktop chip + /fleet.
+Route Hermes across your own inference boxes (DGX Spark, Ollama, vLLM): health checks, least-busy-box pick, local / auto / cloud modes, switch to cloud when boxes are down and back when they recover, Desktop chip + /fleet.
 
 ## Long
 
@@ -10,20 +10,20 @@ Route Hermes across your own inference boxes (DGX Spark, Ollama, vLLM): health p
 
 - Fleet registry (`hermes fleet add / list / rm`), kinds ollama, vllm, litellm, openai-compatible
 - Live health: up/down, latency, load from Ollama `/api/ps` or vLLM `/metrics`, free memory
-- Freest-box routing with a no-flap margin, label preferences and pinning
+- Least-busy-box routing that does not flip-flop, with label preferences and pinning
 - Modes: prefer-local, prefer-cloud, auto
 - Failover to your cloud model when every box is down, **failback** when one recovers
 - Works with core `fallback_providers` instead of replacing it; `restore` undoes everything
 - CLI `hermes fleet …`, slash `/fleet`, Desktop status-bar chip + fleet panel, palette commands, opt-in DGX Spark theme
 - Read-only agent tools plus an Ollama-only model pull; **no remote shell**
 
-Point a node at LiteLLM to let LiteLLM balance, or let local-fleet pick the freest box.
+Point a node at LiteLLM to let LiteLLM balance, or let Local Fleet pick the least busy box.
 
 ## PR description draft
 
 Adds `plugin-catalog/local-fleet.yaml`, a community plugin (repo: humedini/local-fleet, MIT).
 
-**What it does.** Registers a fleet of OpenAI-compatible inference boxes, probes their health and load, and makes the freest healthy one Hermes's primary model; fails over to the user's cloud model when every box is down and fails back when one recovers.
+**What it does.** Registers a fleet of OpenAI-compatible inference boxes, probes their health and load, and makes the least busy one Hermes's primary model; fails over to the user's cloud model when every box is down and fails back when one recovers.
 
 **Surfaces used.** `register_tool` (3, gated by `check_fn` on a non-empty fleet), `register_command` (`/fleet`), `register_cli_command` (`hermes fleet`), `register_hook` (`on_session_start`, background, bounded), `plugin_data_dir`, `ctx.set_config`, `hermes_cli.config.load_config` / `save_config` for the primary and `fallback_providers`, a unified Desktop half (`desktop/plugin.js`: statusbar chip, palette entries, a theme) and `dashboard/plugin_api.py` routes for it.
 

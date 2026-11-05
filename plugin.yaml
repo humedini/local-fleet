@@ -41,7 +41,7 @@ config_schema:
     choices: [prefer-local, prefer-cloud, auto]
     default: auto
     label: Routing mode
-    description: "prefer-local: freest healthy local box, cloud when all are down. prefer-cloud: cloud primary, locals on demand. auto: local when any is healthy, else cloud, back to local when it recovers."
+    description: "prefer-local: the least busy box, cloud when every box is down. prefer-cloud: cloud, with boxes on request. auto: a box when one is up, else cloud, back to a box when one recovers."
   cloud_provider:
     type: str
     default: openrouter
@@ -91,7 +91,7 @@ config_schema:
     type: list
     default: []
     label: Side tasks on the fleet
-    description: Auxiliary tasks run on the freest box, e.g. ["title_generation", "compression"]; set with hermes fleet aux on
+    description: Auxiliary tasks run on the least busy box, e.g. ["title_generation", "compression"]; set with hermes fleet aux on
   price_in_per_m:
     type: float
     default: 0.0

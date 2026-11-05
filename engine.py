@@ -100,7 +100,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         decision["changed"] = not same_target(decision["target"], applied_now)
         target = decision["target"]
         if pin and target.get("node_id") != current["node_id"]:
-            decision["warning"] = f"{pin} is not healthy; routed by policy instead"
+            decision["warning"] = f"{pin} is not available; picked a box automatically instead"
         if target["kind"] == "cloud" and not _cloud_ready(target):
             decision["applied"] = False
             decision["warning"] = ("no cloud target set (hermes fleet setup, or "

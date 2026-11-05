@@ -4,7 +4,7 @@ FLEET_STATUS = {
     "name": "fleet_status",
     "description": (
         "Probe the user's local inference fleet (DGX Spark / Ollama / vLLM boxes "
-        "registered with local-fleet) and report each node's health, load and models, the freest node, the "
+        "registered with local-fleet) and report each node's health, load and models, the least busy box, the "
         "routing mode and which backend is the primary model now. Use when the user asks which "
         "box is up, busy or serving a model, or why Hermes is on cloud or local. Read-only."),
     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},

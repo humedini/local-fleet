@@ -14,6 +14,7 @@ const SPARK_GREEN = '#76b900'
 const MODES = [['prefer-local', 'Local'], ['auto', 'Auto'], ['prefer-cloud', 'Cloud']]
 const KEY = [ID, 'status']
 const PAGE_PATH = '/local-fleet'
+const AUTO_PICK_TIP = 'Switch Hermes to the least busy box that has your model (loads the model there first)'
 // Last status seen by any view, for the model menu and pill (their decorators must be pure lookups).
 let LAST = null
 
@@ -218,7 +219,7 @@ function NodeRow({ node, active, freest, want }) {
       jsx(Marks, { n: node, size: 13 }),
       jsx('span', { children: node.name }),
       active && jsx('em', { className: 'hs-badge', 'data-kind': 'active', style: { fontStyle: 'normal' }, children: 'active' }),
-      !active && freest && jsx('em', { className: 'hs-badge', 'data-kind': 'freest', style: { fontStyle: 'normal' }, children: 'freest' })
+      !active && freest && jsx('em', { className: 'hs-badge', 'data-kind': 'freest', style: { fontStyle: 'normal' }, children: 'least busy' })
     ] }),
     jsx('span', { className: 'hs-lat', children: h.latency_ms != null && !off ? `${h.latency_ms} ms` : '' }),
     jsxs('div', { className: 'hs-sub', children: [
@@ -264,8 +265,8 @@ function Panel({ ctx, status }) {
         jsx('button', { key: m, type: 'button', role: 'radio', 'aria-checked': s.mode === m, disabled: Boolean(busy), title: m,
           onClick: () => { if (s.mode !== m) { haptic('tap'); run('mode', '/mode', { mode: m }) } }, children: label })) }),
       jsxs('div', { className: 'hs-actions', children: [
-        jsx(Button, { size: 'sm', disabled: Boolean(busy), onClick: () => run('use', '/use', { node: 'freest' }),
-          children: busy === 'use' ? 'Routing…' : 'Use freest' }),
+        jsx(Button, { size: 'sm', disabled: Boolean(busy), title: AUTO_PICK_TIP, onClick: () => run('use', '/use', { node: 'best' }),
+          children: busy === 'use' ? 'Switching…' : 'Auto-pick box' }),
         jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), onClick: () => run('probe', '/probe'),
           children: busy === 'probe' ? 'Probing…' : 'Probe now' })
       ] })
@@ -519,7 +520,7 @@ function NodeCard({ n, s }) {
 
 function Timeline({ history }) {
   const items = (history || []).slice().reverse().slice(0, 12)
-  if (!items.length) return jsx('div', { className: 'hs-page-hint', children: 'No routing changes yet. Use freest, a mode change or a failover will appear here.' })
+  if (!items.length) return jsx('div', { className: 'hs-page-hint', children: 'No routing changes yet. Auto-pick box, a mode change or a failover will appear here.' })
   return jsx('div', { className: 'hs-timeline', children: items.map((e, i) => jsxs('div', { className: 'hs-ev', 'data-kind': e.kind, 'data-via': e.via || '', children: [
     e.kind === 'local' ? `→ ${e.node} · ${e.model}` : `→ cloud · ${e.model}`,
     jsx('small', { children: `${ago(e.at)} · ${e.reason}` })
@@ -570,7 +571,7 @@ function FleetPage({ ctx }) {
       jsx('div', { className: 'hs-seg', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(([m, label]) =>
         jsx('button', { key: m, type: 'button', role: 'radio', 'aria-checked': s.mode === m, disabled: Boolean(busy), title: m,
           onClick: () => { if (s.mode !== m) { haptic('tap'); run('mode', '/mode', { mode: m }) } }, children: label })) }),
-      jsx(Button, { size: 'sm', disabled: Boolean(busy), onClick: () => run('use', '/use', { node: 'freest' }), children: busy === 'use' ? 'Routing…' : 'Use freest' }),
+      jsx(Button, { size: 'sm', disabled: Boolean(busy), title: AUTO_PICK_TIP, onClick: () => run('use', '/use', { node: 'best' }), children: busy === 'use' ? 'Switching…' : 'Auto-pick box' }),
       jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), onClick: () => run('probe', '/probe'), children: busy === 'probe' ? 'Probing…' : 'Probe now' }),
       jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), title: 'Short generation on each box that has a model in memory',
         onClick: () => run('bench', '/bench'), children: busy === 'bench' ? 'Benchmarking…' : 'Benchmark' }),
@@ -578,7 +579,7 @@ function FleetPage({ ctx }) {
         title: 'delegate_task subagents run on the fleet, spread across boxes (from the next session)',
         onClick: () => run('delegate', '/delegate', { on: s.delegation_backend !== 'fleet' }), children: [jsx('i', {}), 'Subagents on fleet'] }),
       jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': Boolean(s.aux), disabled: Boolean(busy),
-        title: s.aux ? `${s.aux.tasks.join(', ')} → ${s.aux.node_name}` : 'Titles and compression on the freest box, cloud as fallback',
+        title: s.aux ? `${s.aux.tasks.join(', ')} → ${s.aux.node_name}` : 'Session titles and compression run on the least busy box, with cloud as backup',
         onClick: () => run('aux', '/aux', { on: !s.aux }), children: [jsx('i', {}), 'Side tasks on fleet'] }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
@@ -606,7 +607,7 @@ const dgxSparkTheme = {
 export default {
   id: ID,
   name: 'Local Fleet',
-  description: 'Which of your inference boxes Hermes is routed to, its health, and one-click mode / freest switching.',
+  description: 'Which of your inference boxes Hermes is routed to, its health, and one-click switching.',
   defaultEnabled: true,
   register(ctx) {
     const style = document.createElement('style')
@@ -645,8 +646,8 @@ export default {
     } } })
     ctx.register({ id: 'theme', area: THEMES_AREA, data: dgxSparkTheme })
     ctx.register({ id: 'palette-freest', area: PALETTE_AREA,
-      data: { id: 'fleet-use-freest', label: 'Fleet: route to the freest box', keywords: ['spark', 'fleet', 'ollama', 'gpu'],
-        run: () => post('/use', { node: 'freest' }, 'Fleet: use freest') } })
+      data: { id: 'fleet-use-freest', label: 'Fleet: switch to the least busy box', keywords: ['spark', 'fleet', 'ollama', 'gpu', 'auto', 'pick'],
+        run: () => post('/use', { node: 'best' }, 'Fleet: auto-pick box') } })
     ctx.register({ id: 'palette-probe', area: PALETTE_AREA,
       data: { id: 'fleet-probe', label: 'Fleet: probe the fleet', keywords: ['spark', 'health'],
         run: () => post('/probe', {}, 'Fleet: probe') } })

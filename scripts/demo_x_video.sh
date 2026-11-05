@@ -22,7 +22,7 @@ run hermes fleet cloud "$CLOUD_PROVIDER" "$CLOUD_MODEL"
 beat "2. Live health and load"
 run hermes fleet status
 
-beat "3. auto: route to the freest healthy box"
+beat "3. auto: Hermes moves to the least busy box"
 run hermes fleet mode auto
 
 beat "4. Stop Ollama on spark1 now, then press Enter (watch fails over / moves boxes)"

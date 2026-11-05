@@ -44,7 +44,7 @@ def test_prefer_cloud_ignores_healthy_locals():
 def test_failback_when_a_local_recovers():
     cur = {"kind": "cloud", "provider": "openrouter", "model": CLOUD["cloud_model"], "via": "failover"}
     d = decide(settings(), NODES, UP, cur)
-    assert d["target"]["kind"] == "local" and d["reason"].startswith("failback")
+    assert d["target"]["kind"] == "local" and d["reason"].startswith("back on")
 
 
 def test_failback_disabled_stays_on_cloud():

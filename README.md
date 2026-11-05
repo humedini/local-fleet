@@ -2,13 +2,13 @@
 
 **Route Hermes across a fleet of local inference boxes, and fall back to cloud only when you have to.**
 
-Register your DGX Spark / GB10 boxes, Ollama hosts, vLLM servers or a LiteLLM gateway. local-fleet probes them, picks the freest healthy one, makes it Hermes's primary model, and moves you to cloud when every box is down. When a box comes back it fails back to local. A Desktop status-bar chip shows where you are routed; `/fleet` and `hermes fleet` do the same from chat and the terminal.
+Register your DGX Spark / GB10 boxes, Ollama hosts, vLLM servers or a LiteLLM gateway. local-fleet probes them, picks the least busy one that is up, makes it Hermes's primary model, and moves you to cloud when every box is down. When a box comes back it fails back to local. A Desktop status-bar chip shows where you are routed; `/fleet` and `hermes fleet` do the same from chat and the terminal.
 
 ```
 $ hermes fleet status
   name         status    health                 kind              url
   gx10         ok        5ms load=0.207 free=95GB ollama            http://192.168.1.50:11434/v1  ← active
-  spark2       ok        3ms load=0             ollama            http://192.168.1.51:11434/v1  (freest)
+  spark2       ok        3ms load=0             ollama            http://192.168.1.51:11434/v1  (least busy)
   mini         ok        21ms load=0.25         ollama            http://192.168.1.52:11434/v1  ok, but no qwen3.6:35b-a3b
 
 mode: auto
@@ -33,14 +33,14 @@ hermes fleet add --name gx10 --url http://192.168.1.50:11434/v1 --kind ollama --
 hermes fleet add --name spark2 --url http://192.168.1.51:11434/v1 --kind ollama
 hermes fleet cloud openrouter anthropic/claude-sonnet-4     # the backup when every box is down
 hermes fleet model qwen3.6:35b-a3b                          # optional: the model to run locally
-hermes fleet use --freest
+hermes fleet use --best
 ```
 
 ## Modes
 
 | Mode | Primary | When every local box is down | When a box recovers |
 |---|---|---|---|
-| `prefer-local` | freest healthy local box | cloud becomes primary | back to the freest local box |
+| `prefer-local` | the least busy box | cloud takes over | back to the least busy box |
 | `auto` (default) | same as prefer-local | same | same |
 | `prefer-cloud` | your cloud target | stays cloud | stays cloud; `hermes fleet use <box>` routes locally on demand |
 
@@ -60,7 +60,7 @@ Lowest load wins, then preferred labels (`prefer_labels`), then most free memory
 
 `hermes fleet bench` runs a short generation (64 tokens) on each box and records tokens per second. For Ollama it uses Ollama's own timings (exact decode and prompt-processing speed); for other kinds it times a streamed reply. It only uses a model the box already has in memory, and skips busy boxes, so a bench never loads tens of GB behind your back; `--load` allows loading. `hermes fleet watch`, the start of a session and the Desktop's **Benchmark** button re-bench boxes whose figure is older than `bench_interval_s` (15 minutes; 0 turns it off). When two boxes are equally free, the one that was faster on the model being routed wins.
 
-It does not flap. A healthy active box is kept unless another is more than `switch_margin` (default 0.25) freer. `hermes fleet use gx10` pins a box while it stays healthy; `use --freest` or a mode change drops the pin.
+It does not flip-flop. The box Hermes is on is kept while it is up, unless another is clearly less busy (by more than `switch_margin`, default 0.25). `hermes fleet use gx10` keeps Hermes on that box while it is up; `use --best` or a mode change lets it choose again.
 
 ## What it changes in your Hermes config
 
@@ -85,7 +85,7 @@ The gateway and Desktop rebuild the agent when the primary changes, so a new rou
 hermes fleet delegate on        # delegation.backend: fleet
 ```
 
-`delegate_task` subagents then run on your boxes: each task gets the freest healthy box, and the tasks of one fan-out take turns down the freest-first list, so four subagents land on four boxes and run in parallel. A task can say `where: cloud` (frontier model), `local` or `any` (the default: local when a box is up, else cloud); every local route keeps your cloud model as its fallback. Each result says which box ran it (`route.label`). Applies from each session's next session, or now with `/delegation fleet --now`; `hermes fleet delegate off` goes back to the default.
+`delegate_task` subagents then run on your boxes: each task gets the least busy box, and the tasks of one fan-out take turns down the list from least busy, so four subagents land on four boxes and run in parallel. A task can say `where: cloud` (frontier model), `local` or `any` (the default: local when a box is up, else cloud); every local route keeps your cloud model as its fallback. Each result says which box ran it (`route.label`). Applies from each session's next session, or now with `/delegation fleet --now`; `hermes fleet delegate off` goes back to the default.
 
 ## Side tasks on the fleet
 
@@ -95,7 +95,7 @@ hermes fleet aux on --tasks title_generation,compression,vision
 hermes fleet aux off                                 # your own settings back
 ```
 
-Hermes's auxiliary tasks run on the freest healthy box whatever the mode, with your cloud model as their fallback chain: cloud brain, local sidecar. They follow the freest box as it changes, go back to your own settings when no box is healthy, and never touch the main conversation's prompt cache.
+Hermes's auxiliary tasks run on the least busy box whatever the mode, with your cloud model as their fallback chain: cloud brain, local sidecar. They follow the least busy box as it changes, go back to your own settings when no box is healthy, and never touch the main conversation's prompt cache.
 
 ## Real traffic and spend avoided
 
@@ -112,7 +112,7 @@ Amounts are shown in your currency: the Desktop formats them with your locale's 
 
 ## Warm before switching
 
-Before Hermes is switched to an Ollama box (Use freest, failover, failback), Local Fleet loads the model there and waits up to `warm_timeout_s` (120 s), so the first message after a switch does not pay for a cold load. `warm_before_switch: false` turns it off.
+Before Hermes is switched to an Ollama box (Auto-pick box, failover, switching back), Local Fleet loads the model there and waits up to `warm_timeout_s` (120 s), so the first message after a switch does not pay for a cold load. `warm_before_switch: false` turns it off.
 
 ## Keeping it current
 
@@ -141,7 +141,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet rm / enable / disable <box>` | manage boxes |
 | `hermes fleet list [--json]` | boxes and their last health |
 | `hermes fleet status [--json]` | probe and show where it would route (changes nothing) |
-| `hermes fleet use <box> \| --freest` | route now |
+| `hermes fleet use <box> \| --best` | switch Hermes to a box now, or to the least busy one |
 | `hermes fleet mode [prefer-local\|prefer-cloud\|auto]` | show or set the mode |
 | `hermes fleet cloud [<provider> <model>]` | show or set the cloud target |
 | `hermes fleet model [<id>]` | show or set the local model |
@@ -156,7 +156,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet doctor` | readiness check |
 | `hermes fleet restore` | put back your original primary |
 
-In chat: `/fleet`, `/fleet list`, `/fleet mode auto`, `/fleet use freest`, `/fleet use gx10`, `/fleet doctor`.
+In chat: `/fleet`, `/fleet list`, `/fleet mode auto`, `/fleet use best`, `/fleet use gx10`, `/fleet doctor`.
 
 ## Agent tools
 
@@ -168,10 +168,10 @@ The tools are hidden until at least one box is registered. There is no tool that
 
 ## Desktop
 
-- **Local Fleet page** in the left sidebar: a live hardware map. Hermes is the hub; each box is drawn as a server with its health, load, free memory and the models in memory; packets flow along the line to the box you are routed to, or to the cloud backup on failover. Below it, a card per box with latency and load sparklines and its models (yours highlighted), and a timeline of routing changes. Mode switch, **Use freest** and **Probe now** at the top.
+- **Local Fleet page** in the left sidebar: a live hardware map. Hermes is the hub; each box is drawn as a server with its health, load, free memory and the models in memory; packets flow along the line to the box you are routed to, or to the cloud backup on failover. Below it, a card per box with latency and load sparklines and its models (yours highlighted), and a timeline of routing changes. Mode switch, **Auto-pick box**, **Probe now** and **Benchmark** at the top.
 - **Platform icons**: NVIDIA, AMD, Intel or Apple silicon, plus Linux or Windows, on the map, the cards and the panel. Set them with `hermes fleet add/set --vendor --os`; unset ones are guessed from the box name (gx10, spark, dgx → NVIDIA; mac, mini, studio → Apple; strix, ryzen → AMD) and say so on hover.
 - **Status-bar chip**: `fleet · gx10` (green when routed locally), `fleet · cloud`, `fleet · all down`, or `fleet · 3/3 up` when the plugin is not routing. Click it for a compact panel with the same controls and a link to the page.
-- **Command palette**: *Fleet: open the fleet map*, *Fleet: route to the freest box*, *Fleet: probe the fleet*, one entry per mode.
+- **Command palette**: *Fleet: open the fleet map*, *Fleet: switch to the least busy box*, *Fleet: probe the fleet*, one entry per mode.
 - **DGX Spark theme**: black and NVIDIA green, listed under themes, never selected for you.
 
 The Desktop half talks to routes the plugin adds to the Hermes it is connected to (`/api/plugins/local-fleet/*`), so enable the plugin on that Hermes (local or remote) and restart its dashboard or gateway once.

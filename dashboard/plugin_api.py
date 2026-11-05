@@ -93,7 +93,7 @@ async def aux_toggle(body: dict):
 async def use(body: dict):
     node = str(body.get("node") or "")
     try:
-        if node in ("", "freest"):
+        if node in ("", "best", "freest"):
             return await asyncio.to_thread(lambda: _view(engine.apply_policy(unpin=True)))
         return await asyncio.to_thread(lambda: _view(engine.apply_policy(pin=node)))
     except FleetError as e:

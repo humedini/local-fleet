@@ -87,7 +87,7 @@ def test_failover_then_failback(hermes):
     assert d["target"]["via"] == "failover"
     boxes(gx=False)
     d = engine.apply_policy()
-    assert d["reason"] == "failback to spark2" and hermes.cfg["model"]["base_url"] == "http://s2:11434/v1"
+    assert d["reason"] == "back on spark2 (it recovered)" and hermes.cfg["model"]["base_url"] == "http://s2:11434/v1"
 
 
 @respx.mock
@@ -123,7 +123,7 @@ def test_slash_and_tools_return_text_and_json(hermes):
     boxes()
     assert "gx10" in slash.handle("status")
     assert slash.handle("mode nonsense").startswith("unknown mode")
-    assert "freest local: gx10" in slash.handle("use freest")
+    assert "least busy box: gx10" in slash.handle("use best")
     assert slash.handle("use nope").startswith("✗")
     out = json.loads(tools.fleet_status({}))
     assert out["ok"] and out["would_route_to"]["node_name"] == "gx10"

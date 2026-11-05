@@ -30,16 +30,16 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
         sub.add_parser(name, help=hlp).add_argument("node", help="id or name")
     p = sub.add_parser("list", help="List nodes with their last health")
     p.add_argument("--json", action="store_true")
-    p = sub.add_parser("status", help="Probe every node and show the freest (changes nothing)")
+    p = sub.add_parser("status", help="Check every box and show where Hermes would go (changes nothing)")
     p.add_argument("--json", action="store_true")
     sub.add_parser("doctor", help="Check the plugin is ready to route")
     p = sub.add_parser("watch", help="Probe and re-apply the policy on an interval (failover + failback)")
     p.add_argument("--interval", type=float, help="Seconds between probes (default: probe_interval_s)")
     p.add_argument("--once", action="store_true", help="One tick, then exit (for cron)")
-    p = sub.add_parser("use", help="Route to a node now (kept while healthy), or --freest")
+    p = sub.add_parser("use", help="Switch Hermes to a box now (kept while it is up), or --best for the least busy one")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("node", nargs="?", help="id or name")
-    g.add_argument("--freest", action="store_true")
+    g.add_argument("--best", "--freest", dest="freest", action="store_true", help="the least busy box that has your model")
     p = sub.add_parser("mode", help="Show or set the routing mode")
     p.add_argument("mode", nargs="?", choices=MODES)
     p = sub.add_parser("cloud", help="Show or set the cloud target used for prefer-cloud and failover")
@@ -61,7 +61,7 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("input", type=float)
     p.add_argument("output", type=float)
     p.add_argument("--currency", default=None, help="ISO 4217 code (GBP, EUR, USD, …) or £ € $ ¥")
-    p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the freest box")
+    p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the least busy box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
     p = sub.add_parser("delegate", help="Run subagents on the fleet (delegation backend 'fleet')")
@@ -179,7 +179,7 @@ def _aux(args) -> int:
         return 1
     store.write_setting("aux_tasks", tasks)
     d = engine.apply_policy(dry_run=True, aux_follow=True)  # side tasks only; the main route is untouched
-    print(d.get("aux") or "side tasks: already on the freest box")
+    print(d.get("aux") or "side tasks: already on the least busy box")
     return 0
 
 
@@ -240,7 +240,7 @@ def _dispatch(cmd: str, args) -> int:
         else:
             text = status_text(store.fleet().nodes, d, _active_id())
             if d["changed"]:
-                text += "\n(status changes nothing: `hermes fleet use --freest` applies this route)"
+                text += "\n(status changes nothing: `hermes fleet use --best` applies this route)"
             print(text.replace("applied: already the primary", "already the primary"))
         return 0
     if cmd == "doctor":
