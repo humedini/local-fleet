@@ -92,6 +92,11 @@ config_schema:
     type: float
     default: 120.0
     label: Warm-up timeout (s)
+  keep_loaded:
+    type: bool
+    default: false
+    label: Keep the routed model loaded
+    description: While Hermes is routed to an Ollama box, keep its model in memory (no cold load after idle time)
   aux_tasks:
     type: list
     default: []

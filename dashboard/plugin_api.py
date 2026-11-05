@@ -89,6 +89,12 @@ async def aux_toggle(body: dict):
     return await asyncio.to_thread(run)
 
 
+@router.post("/keep")
+async def keep(body: dict):
+    on = bool(body.get("on"))
+    return await asyncio.to_thread(lambda: {**_view(), "decision": {"reason": engine.set_keep(on)}})
+
+
 @router.post("/rename")
 async def rename(body: dict):
     """Set or clear a box's display name (the handle used in commands never changes)."""

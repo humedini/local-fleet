@@ -146,6 +146,14 @@ Amounts are shown in your currency: the Desktop formats them with your locale's 
 
 Before Hermes is switched to an Ollama box (Auto-pick box, failover, switching back), Local Fleet loads the model there and waits up to `warm_timeout_s` (120 s), so the first message after a switch does not pay for a cold load. `warm_before_switch: false` turns it off.
 
+## Keep the model loaded
+
+```bash
+hermes fleet keep on
+```
+
+Ollama unloads a model after a few idle minutes, so the first message after a quiet spell waits for it to load again. With `keep on`, while Hermes is routed to an Ollama box the routed model stays in memory (refreshed whenever the plugin probes); when routing moves to another box, or you turn it off, the old box gets Ollama's normal idle timer back. It holds that model's memory for as long as you are routed there.
+
 ## Keeping it current
 
 Routing is re-evaluated when you run a command, when a new session starts (in the background, at most once per `probe_interval_s`), and continuously with:
@@ -183,6 +191,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet cluster add\|rm …` | boxes linked to serve one big model behind one endpoint |
 | `hermes fleet delegate on\|off\|status` | subagents on the fleet |
 | `hermes fleet aux on\|off\|status [--tasks]` | side tasks on the fleet |
+| `hermes fleet keep on\|off\|status` | keep the routed model in memory |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |
 | `hermes fleet price <in> <out> [--currency CODE]` | cloud price per million tokens, in an ISO 4217 currency (`£ € $ ¥` accepted) |
 | `hermes fleet endpoint` | the primary Hermes is using |

@@ -143,6 +143,8 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         if not dry_run and _cloud_ready({"provider": settings.get("cloud_provider"),
                                          "model": settings.get("cloud_model")}):
             decision["fallback_added"] = config_write.ensure_fallback(settings["cloud_provider"], settings["cloud_model"])
+        if not dry_run:
+            decision["keep"] = _keep_loaded(settings, f, results, applied_now, state.get("applied") or {})
         if not dry_run or aux_follow:  # side tasks are their own opt-in, independent of main routing
             decision["aux"] = _follow_aux(settings, f, results, decision, state)
         state["last_decision"] = decision
@@ -179,6 +181,54 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     state["aux_original"] = original
     state["aux_applied"] = want
     return f"side tasks → {node['name']} · {model}"
+
+
+FOREVER = "-1"   # Ollama keep_alive: never unload
+RELEASE = "5m"   # back to a normal idle timer
+
+
+def _keep_loaded(settings, f, results, before: dict, now: dict) -> str | None:
+    """With keep_loaded on, hold the routed model in memory; release the previous box's model
+    when routing moves. Only Ollama boxes; never raises."""
+    try:
+        moved = before.get("kind") == "local" and (before.get("node_id"), before.get("model")) != (now.get("node_id"), now.get("model"))
+        if moved or (before and not settings.get("keep_loaded")):
+            old = f.find(before.get("node_id") or "")
+            if old is not None and before.get("model") and before.get("kept"):
+                warm(old, before["model"], [before["model"]], timeout=10, keep_alive=RELEASE, refresh=True)
+        if not settings.get("keep_loaded") or now.get("kind") != "local":
+            now.pop("kept", None)
+            return None
+        node = f.find(now.get("node_id") or "")
+        snap = results.get(now.get("node_id")) or {}
+        if node is None or node.get("kind") != "ollama":
+            return None
+        expires = (snap.get("expires") or {}).get(now["model"], "")
+        if now["model"] in (snap.get("resident") or []) and expires[:4] >= "2100":
+            now["kept"] = True
+            return None  # already held
+        r = warm(node, now["model"], snap.get("resident") or [], timeout=float(settings.get("warm_timeout_s") or 120),
+                 keep_alive=FOREVER, refresh=True)
+        now["kept"] = True
+        return f"keeping {now['model']} loaded on {node['name']}" + ("" if r.get("warmed") else f" ({r.get('detail')})")
+    except Exception:
+        return None
+
+
+def set_keep(on: bool) -> str:
+    """Turn keep_loaded on (holds the routed model now) or off (hands it back to Ollama's timer)."""
+    store.write_setting("keep_loaded", on)
+    with _lock:
+        state = store.load_state()
+        applied = state.get("applied") or {}
+        if not applied:
+            return "on; takes effect once Hermes is routed to a box" if on else "off"
+        settings, f, results = probe()
+        before = dict(applied)
+        msg = _keep_loaded(settings, f, results, before, applied)
+        state["applied"] = applied
+        store.save_state({**store.load_state(), "applied": applied})
+        return msg or ("on" if on else "off; the model unloads after Ollama's normal idle time")
 
 
 def aux_off() -> list[str]:
@@ -242,6 +292,7 @@ def snapshot() -> dict:
         "traffic": stats,
         "currency": settings.get("currency") or "USD",
         "aux": state.get("aux_applied"),
+        "keep_loaded": bool(settings.get("keep_loaded")),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],
         "history": state.get("history") or [],

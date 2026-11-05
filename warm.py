@@ -12,11 +12,12 @@ from .health import node_headers, origin
 
 
 def warm(node: dict, model: str, resident: list[str], timeout: float = 120.0, keep_alive: str = "30m",
-         transport: httpx.BaseTransport | None = None) -> dict:
-    """{"warmed": bool, "detail": str}. Never raises."""
+         transport: httpx.BaseTransport | None = None, refresh: bool = False) -> dict:
+    """{"warmed": bool, "detail": str}. Never raises. `refresh` also sends `keep_alive` to a model
+    already in memory (Ollama then only resets its unload timer; nothing reloads)."""
     if node.get("kind") != "ollama" or not model:
         return {"warmed": False, "detail": "not an ollama box"}
-    if model in (resident or []):
+    if model in (resident or []) and not refresh:
         return {"warmed": False, "detail": "already in memory"}
     try:
         with httpx.Client(timeout=httpx.Timeout(timeout, connect=5), transport=transport) as c:

@@ -82,6 +82,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the least busy box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
+    p = sub.add_parser("keep", help="Keep the routed model in memory while Hermes is routed to a box")
+    p.add_argument("action", choices=("on", "off", "status"))
     p = sub.add_parser("delegate", help="Run subagents on the fleet (delegation backend 'fleet')")
     p.add_argument("action", choices=("on", "off", "status"))
     sub.add_parser("endpoint", help="Show the primary endpoint Hermes is using")
@@ -356,6 +358,12 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "aux":
         return _aux(args)
+    if cmd == "keep":
+        if args.action == "status":
+            print(f"keep routed model loaded: {'on' if store.read_settings().get('keep_loaded') else 'off'}")
+            return 0
+        print("keep routed model loaded: " + engine.set_keep(args.action == "on"))
+        return 0
     if cmd == "delegate":
         return _delegate(args.action)
     if cmd == "endpoint":

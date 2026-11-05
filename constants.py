@@ -27,6 +27,9 @@ DEFAULTS = {
     # Load the model on a box before switching Hermes to it (Ollama), and how long to wait.
     "warm_before_switch": True,
     "warm_timeout_s": 120.0,
+    # Keep the routed model in memory while Hermes is routed to an Ollama box (no cold load after
+    # idle time); released back to Ollama's normal idle timer when routing moves away.
+    "keep_loaded": False,
     # Auxiliary tasks to run on the least busy box (hermes fleet aux on); empty = off.
     "aux_tasks": [],
     # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.

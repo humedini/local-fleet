@@ -138,3 +138,18 @@ def test_aux_on_leaves_the_main_route_alone(hermes):  # noqa: F811
     assert d["aux"].startswith("side tasks")
     assert hermes.cfg["model"]["provider"] == "openai-codex"
     assert hermes.cfg["auxiliary"]["compression"]["base_url"] == "http://gx:11434/v1"
+
+
+@respx.mock
+def test_keep_loaded_holds_the_routed_model_and_releases_it(hermes):  # noqa: F811
+    boxes()
+    engine.apply_policy()                                   # routed to gx10, keep off: no keep_alive -1
+    store.write_setting("keep_loaded", True)
+    engine.apply_policy()
+    calls = [json.loads(c.request.content) for c in respx.calls if c.request.url.path == "/api/generate"]
+    assert any(c.get("keep_alive") == "-1" and c["model"] == "qwen" for c in calls)
+    assert store.load_state()["applied"]["kept"] is True
+    respx.calls.reset()
+    engine.set_keep(False)                                  # hands it back to a normal timer
+    calls = [json.loads(c.request.content) for c in respx.calls if c.request.url.path == "/api/generate"]
+    assert any(c.get("keep_alive") == "5m" for c in calls)
