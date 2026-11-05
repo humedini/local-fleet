@@ -178,7 +178,7 @@ def _aux(args) -> int:
         print(f"✗ unknown task(s): {', '.join(bad)}; choose from {', '.join(AUX_TASKS)}")
         return 1
     store.write_setting("aux_tasks", tasks)
-    d = engine.apply_policy()
+    d = engine.apply_policy(dry_run=True, aux_follow=True)  # side tasks only; the main route is untouched
     print(d.get("aux") or "side tasks: already on the freest box")
     return 0
 

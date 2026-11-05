@@ -15,8 +15,9 @@ _bg = threading.Lock()
 
 
 def _refresh_on_session_start(**kwargs) -> None:
-    """New session: re-route in the background if the watch loop has not probed recently, so
-    the next message goes to a live box. Never blocks the session."""
+    """New session: refresh health (and speed, when due) in the background if nothing probed
+    recently; once the user has routed with `use` / `mode` / `watch`, also keep that routing
+    current (failover, failback). Before that it never changes the primary. Never blocks."""
     if not tools.fleet_ready() or not _bg.acquire(blocking=False):
         return
 
@@ -28,7 +29,8 @@ def _refresh_on_session_start(**kwargs) -> None:
             last = state.get("last_probe_at")
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds() if last else 1e9
             if age >= float(settings["probe_interval_s"]):
-                engine.apply_policy(auto_bench=True)
+                # Routing is opt-in: only an explicit use/mode/watch sets "applied".
+                engine.apply_policy(dry_run=not state.get("applied"), auto_bench=True, aux_follow=True)
         except Exception:
             pass  # a failed background probe must never surface in someone's session
         finally:

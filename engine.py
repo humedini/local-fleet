@@ -79,7 +79,7 @@ def _cloud_ready(target: dict) -> bool:
 
 
 def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = False,
-                 auto_bench: bool = False) -> dict:
+                 auto_bench: bool = False, aux_follow: bool = False) -> dict:
     """Probe, decide and, unless dry_run, write the primary when it changed.
 
     `pin` is a node id/name to use now and keep while it stays healthy (`hermes fleet use gx10`);
@@ -126,7 +126,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         if not dry_run and _cloud_ready({"provider": settings.get("cloud_provider"),
                                          "model": settings.get("cloud_model")}):
             decision["fallback_added"] = config_write.ensure_fallback(settings["cloud_provider"], settings["cloud_model"])
-        if not dry_run:
+        if not dry_run or aux_follow:  # side tasks are their own opt-in, independent of main routing
             decision["aux"] = _follow_aux(settings, f, results, decision, state)
         state["last_decision"] = decision
         if decision["applied"]:

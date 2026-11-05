@@ -82,7 +82,7 @@ async def aux_toggle(body: dict):
     def run():
         if on:
             store.write_setting("aux_tasks", list(store.read_settings().get("aux_tasks") or []) or ["title_generation", "compression"])
-            return _view(engine.apply_policy())
+            return _view(engine.apply_policy(dry_run=True, aux_follow=True))
         engine.aux_off()
         return _view()
 

@@ -114,3 +114,27 @@ def test_currency_codes_and_formatting():
 def test_old_symbol_setting_reads_as_a_code(hermes):  # noqa: F811
     store.write_setting("currency", "£")
     assert store.read_settings()["currency"] == "GBP"
+
+
+@respx.mock
+def test_session_start_refresh_never_routes_until_opted_in(hermes):  # noqa: F811
+    import local_fleet as plugin
+    boxes()
+    plugin._refresh_on_session_start(session_id="s")
+    for _ in range(50):
+        if plugin._bg.acquire(blocking=False):
+            plugin._bg.release()
+            break
+        time.sleep(0.05)
+    assert hermes.cfg["model"]["provider"] == "openai-codex"          # untouched
+    assert "applied" not in store.load_state() and store.load_state().get("last_probe_at")
+
+
+@respx.mock
+def test_aux_on_leaves_the_main_route_alone(hermes):  # noqa: F811
+    store.write_setting("aux_tasks", ["compression"])
+    boxes()
+    d = engine.apply_policy(dry_run=True, aux_follow=True)
+    assert d["aux"].startswith("side tasks")
+    assert hermes.cfg["model"]["provider"] == "openai-codex"
+    assert hermes.cfg["auxiliary"]["compression"]["base_url"] == "http://gx:11434/v1"
