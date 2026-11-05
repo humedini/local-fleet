@@ -44,7 +44,8 @@ def run() -> tuple[bool, list[str]]:
     lines.append(f"  mode: {settings['mode']}")
 
     primary = config_write.current_primary()
-    where = f" {primary['base_url']}" if primary.get("base_url") else ""
+    hide = bool(settings.get("hide_addresses"))
+    where = f" {primary['base_url']}" if primary.get("base_url") and not hide else ""
     lines.append(f"  primary: {primary.get('provider', '?')}{where} model={primary.get('default', '?')}")
     applied = store.load_state().get("applied")
     lines.append(f"  routed by local-fleet: {target_text(applied) if applied else 'not yet (hermes fleet use --freest)'}")

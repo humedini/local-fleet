@@ -30,6 +30,8 @@ DEFAULTS = {
     # Keep the routed model in memory while Hermes is routed to an Ollama box (no cold load after
     # idle time); released back to Ollama's normal idle timer when routing moves away.
     "keep_loaded": False,
+    # Hide box addresses in the Desktop and the terminal (screen recordings, demos).
+    "hide_addresses": False,
     # Auxiliary tasks to run on the least busy box (hermes fleet aux on); empty = off.
     "aux_tasks": [],
     # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.

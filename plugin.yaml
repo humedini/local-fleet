@@ -97,6 +97,11 @@ config_schema:
     default: false
     label: Keep the routed model loaded
     description: While Hermes is routed to an Ollama box, keep its model in memory (no cold load after idle time)
+  hide_addresses:
+    type: bool
+    default: false
+    label: Hide box addresses
+    description: Show display names only, no URLs or IPs, in the Desktop and terminal (for screen recordings)
   aux_tasks:
     type: list
     default: []

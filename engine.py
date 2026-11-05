@@ -293,6 +293,7 @@ def snapshot() -> dict:
         "currency": settings.get("currency") or "USD",
         "aux": state.get("aux_applied"),
         "keep_loaded": bool(settings.get("keep_loaded")),
+        "hide_addresses": bool(settings.get("hide_addresses")),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],
         "history": state.get("history") or [],

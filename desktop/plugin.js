@@ -708,7 +708,8 @@ function NodeCard({ n, s, ctx }) {
       const t = ((s.traffic || {}).boxes || {})[n.id]
       return t ? jsx('div', { className: 'hs-card-perf', children: `real traffic: ${t.calls} calls this week${t.tps ? ` · ${t.tps} tok/s effective` : ''}${t.latency_s ? ` · ${t.latency_s}s median` : ''}${t.errors ? ` · ${t.errors} errors` : ''}` }) : null
     })(),
-    jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
+    jsx('div', { className: 'hs-card-sub', title: s.hide_addresses ? undefined : n.base_url,
+      children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'}${s.hide_addresses ? '' : ' · ' + n.base_url}` }),
     cluster
       ? jsx('div', { className: 'hs-cluster-members', children: n.members.map(id => byId[id]).filter(Boolean).map(m =>
           jsxs('div', { children: [jsx('div', { className: 'hs-mem-who', children: dname(m) }), jsx(MemoryPanel, { n: m, s })] }, m.id)) })

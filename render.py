@@ -15,6 +15,13 @@ def _load(h: dict, perf: dict | None = None) -> str:
     return " ".join(bits)
 
 
+HIDE = {"on": False}  # set by the CLI from the hide_addresses setting
+
+
+def _url(node: dict) -> str:
+    return "(address hidden)" if HIDE["on"] else node["base_url"]
+
+
 def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     h = node.get("last_health") or {}
     status = h.get("status", "unprobed") if node.get("enabled", True) else "disabled"
@@ -23,7 +30,7 @@ def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     detail = h.get("detail", "") if h.get("detail") not in (None, "ok") else ""
     detail = detail.replace("ok · fallback ", "fallback · ")
     name = node["name"] + ("*" if node.get("members") else "")
-    return (f"  {name:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {node['base_url']}"
+    return (f"  {name:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {_url(node)}"
             f"{'  ' + detail if detail else ''}{marks}").rstrip()
 
 
@@ -38,7 +45,7 @@ def target_text(t: dict) -> str:
     if not t:
         return "nothing applied yet"
     if t.get("kind") == "local":
-        return f"{t.get('node_name')} · {t.get('model') or '?'} · {t.get('base_url')}"
+        return f"{t.get('node_name')} · {t.get('model') or '?'}" + ("" if HIDE["on"] else f" · {t.get('base_url')}")
     return f"cloud · {t.get('provider') or '?'}/{t.get('model') or '?'}"
 
 

@@ -163,3 +163,13 @@ def test_series_and_history_feed_the_fleet_page(hermes):
     assert [e["kind"] for e in snap["history"]] == ["local", "cloud"]
     assert snap["history"][-1]["via"] == "failover"
     assert snap["primary"]["provider"] == "openrouter" and snap["local_model"] == "qwen"
+
+
+@respx.mock
+def test_privacy_hides_addresses_in_text_output(hermes):
+    from local_fleet import render
+    boxes()
+    store.write_setting("hide_addresses", True)
+    out = slash.handle("status")
+    assert "http://" not in out and "(address hidden)" in out
+    render.HIDE["on"] = False

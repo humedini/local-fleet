@@ -82,6 +82,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the least busy box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
+    p = sub.add_parser("privacy", help="Hide box addresses in the Desktop and terminal (for recordings)")
+    p.add_argument("action", choices=("on", "off"))
     p = sub.add_parser("keep", help="Keep the routed model in memory while Hermes is routed to a box")
     p.add_argument("action", choices=("on", "off", "status"))
     p = sub.add_parser("delegate", help="Run subagents on the fleet (delegation backend 'fleet')")
@@ -225,6 +227,8 @@ def _show_or_set(key: str, value, label: str) -> int:
 
 def main(args) -> int:
     cmd = getattr(args, "fleet_command", None) or "status"
+    from . import render
+    render.HIDE["on"] = bool(store.read_settings().get("hide_addresses"))
     try:
         code = _dispatch(cmd, args)
     except FleetError as e:
@@ -358,6 +362,10 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "aux":
         return _aux(args)
+    if cmd == "privacy":
+        store.write_setting("hide_addresses", args.action == "on")
+        print("box addresses " + ("hidden" if args.action == "on" else "shown") + " in the Desktop and terminal")
+        return 0
     if cmd == "keep":
         if args.action == "status":
             print(f"keep routed model loaded: {'on' if store.read_settings().get('keep_loaded') else 'off'}")

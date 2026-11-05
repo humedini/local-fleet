@@ -11,6 +11,8 @@ HELP = ("/fleet [status|list|stats|mode [prefer-local|prefer-cloud|auto]|use <bo
 
 
 def handle(raw_args: str = "", **kwargs) -> str:
+    from . import render
+    render.HIDE["on"] = bool(store.read_settings().get("hide_addresses"))
     words = (raw_args or "").split()
     cmd, rest = (words[0].lower(), words[1:]) if words else ("status", [])
     try:
