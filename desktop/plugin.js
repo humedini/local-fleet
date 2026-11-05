@@ -97,7 +97,10 @@ const CSS = `
 .hs-led:nth-child(3n){animation-delay:1.1s}
 @keyframes hs-blink{0%,100%{opacity:1}50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.hs-wire[data-live=true],.hs-led{animation:none}}
-.hs-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:14px}
+.hs-page{container-type:inline-size}
+.hs-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+@container (max-width:900px){.hs-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:560px){.hs-cards{grid-template-columns:minmax(0,1fr)}}
 .hs-card{border:1px solid var(--ui-stroke-tertiary);border-radius:8px;padding:10px 12px;min-width:0}
 .hs-card[data-active=true]{border-color:${SPARK_GREEN};box-shadow:0 0 0 1px color-mix(in srgb,${SPARK_GREEN} 40%,transparent)}
 .hs-card-head{display:flex;align-items:center;gap:7px;font-weight:600}
