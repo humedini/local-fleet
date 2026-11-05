@@ -56,6 +56,10 @@ Every kind answers `GET {base}/models`, which decides up or down and gives laten
 
 Lowest load wins, then preferred labels (`prefer_labels`), then most free memory, then latency, then name. If you set a local model (`hermes fleet model`), boxes that do not serve it are skipped. A box whose models answer but whose load endpoint fails is *degraded* and still routable.
 
+### Speed
+
+`hermes fleet bench` runs a short generation (64 tokens) on each box and records tokens per second. For Ollama it uses Ollama's own timings (exact decode and prompt-processing speed); for other kinds it times a streamed reply. It only uses a model the box already has in memory, and skips busy boxes, so a bench never loads tens of GB behind your back; `--load` allows loading. `hermes fleet watch`, the start of a session and the Desktop's **Benchmark** button re-bench boxes whose figure is older than `bench_interval_s` (15 minutes; 0 turns it off). When two boxes are equally free, the one that was faster on the model being routed wins.
+
 It does not flap. A healthy active box is kept unless another is more than `switch_margin` (default 0.25) freer. `hermes fleet use gx10` pins a box while it stays healthy; `use --freest` or a mode change drops the pin.
 
 ## What it changes in your Hermes config
@@ -107,6 +111,8 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet cloud [<provider> <model>]` | show or set the cloud target |
 | `hermes fleet model [<id>]` | show or set the local model |
 | `hermes fleet watch [--interval s] [--once]` | keep routing current |
+| `hermes fleet bench [<box>…] [--load]` | measure generation speed (tokens/sec) |
+| `hermes fleet set <box> [--vendor] [--os] [--label] [--capacity-gb]` | platform (for the Desktop icons), labels, capacity |
 | `hermes fleet endpoint` | the primary Hermes is using |
 | `hermes fleet doctor` | readiness check |
 | `hermes fleet restore` | put back your original primary |
@@ -124,6 +130,7 @@ The tools are hidden until at least one box is registered. There is no tool that
 ## Desktop
 
 - **Local Fleet page** in the left sidebar: a live hardware map. Hermes is the hub; each box is drawn as a server with its health, load, free memory and the models in memory; packets flow along the line to the box you are routed to, or to the cloud backup on failover. Below it, a card per box with latency and load sparklines and its models (yours highlighted), and a timeline of routing changes. Mode switch, **Use freest** and **Probe now** at the top.
+- **Platform icons**: NVIDIA, AMD, Intel or Apple silicon, plus Linux or Windows, on the map, the cards and the panel. Set them with `hermes fleet add/set --vendor --os`; unset ones are guessed from the box name (gx10, spark, dgx → NVIDIA; mac, mini, studio → Apple; strix, ryzen → AMD) and say so on hover.
 - **Status-bar chip**: `fleet · gx10` (green when routed locally), `fleet · cloud`, `fleet · all down`, or `fleet · 3/3 up` when the plugin is not routing. Click it for a compact panel with the same controls and a link to the page.
 - **Command palette**: *Fleet: open the fleet map*, *Fleet: route to the freest box*, *Fleet: probe the fleet*, one entry per mode.
 - **DGX Spark theme**: black and NVIDIA green, listed under themes, never selected for you.
@@ -142,7 +149,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 
 ## Disclosures
 
-- **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), and to Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
+- **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
 - **Files**: reads and writes `fleet.json` and `state.json` in its own plugin data directory; writes the config keys listed above.
 - **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`). `hermes fleet watch` runs only when you start it.
 - **Credentials**: none stored. Optional per-box keys are read by env var name through Hermes's secret resolver.
