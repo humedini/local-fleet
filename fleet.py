@@ -84,7 +84,8 @@ class Fleet:
 
     def add(self, name: str, url: str, kind: str = "ollama", labels=None,
             api_key_env: str | None = None, enabled: bool = True,
-            capacity_gb: float | None = None, vendor: str | None = None, os_name: str | None = None) -> dict:
+            capacity_gb: float | None = None, vendor: str | None = None, os_name: str | None = None,
+            memory_gb: float | None = None) -> dict:
         name = (name or "").strip()
         if not name or len(name) > 40 or not re.match(r"^[\w.-]+$", name):
             raise FleetError("name must be 1-40 letters, digits, '.', '_' or '-'")
@@ -93,8 +94,8 @@ class Fleet:
         base_url = normalize_url(url)
         if api_key_env and not _ENV_NAME.match(api_key_env):
             raise FleetError("--api-key-env takes the NAME of an environment variable, not a key")
-        if capacity_gb is not None and not 0 < capacity_gb <= 4096:
-            raise FleetError("--capacity-gb must be between 0 and 4096")
+        _check_gb(capacity_gb, "--capacity-gb")
+        _check_gb(memory_gb, "--memory-gb")
         _check_platform(vendor, os_name)
         for n in self.nodes:
             if n["name"].lower() == name.lower():
@@ -111,6 +112,7 @@ class Fleet:
             "enabled": enabled,
             "api_key_env": api_key_env or None,
             "capacity_gb": capacity_gb,
+            "memory_gb": memory_gb,
             "vendor": vendor or None,
             "os": os_name or None,
             "models": [],
@@ -136,10 +138,12 @@ class Fleet:
         return node
 
     def update(self, ref: str, **fields) -> dict:
-        """Change a node's vendor, os, labels or capacity_gb."""
+        """Change a node's vendor, os, labels, capacity_gb or memory_gb."""
         node = self.get(ref)
         _check_platform(fields.get("vendor"), fields.get("os"))
-        for key in ("vendor", "os", "labels", "capacity_gb"):
+        _check_gb(fields.get("capacity_gb"), "--capacity-gb")
+        _check_gb(fields.get("memory_gb"), "--memory-gb")
+        for key in ("vendor", "os", "labels", "capacity_gb", "memory_gb"):
             if fields.get(key) is not None:
                 node[key] = fields[key] or None
         node["updated_at"] = now_iso()
@@ -169,6 +173,11 @@ class Fleet:
                 n["models"] = snap["models"]
             n["updated_at"] = snap["checked_at"]
         self.save()
+
+
+def _check_gb(value, flag):
+    if value is not None and not 0 < value <= 4096:
+        raise FleetError(f"{flag} must be between 0 and 4096")
 
 
 def _check_platform(vendor, os_name):

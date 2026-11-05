@@ -23,7 +23,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--kind", choices=KINDS, default="ollama")
     p.add_argument("--label", action="append", default=[], help="Repeatable, e.g. --label lan")
     p.add_argument("--api-key-env", help="NAME of the env var holding this node's key (never the key)")
-    p.add_argument("--capacity-gb", type=float, help="Model memory on the box, for a real free-memory figure")
+    p.add_argument("--capacity-gb", type=float, help="Memory the box can give to models, for a real free-memory figure")
+    p.add_argument("--memory-gb", type=float, help="The box's total memory, shown on its card (e.g. 128)")
     p.add_argument("--vendor", choices=VENDORS, help="Accelerator vendor, for the Desktop icon (else guessed from the name)")
     p.add_argument("--os", dest="os_name", choices=OSES, help="Operating system, for the Desktop icon")
     for name, hlp in (("rm", "Remove a node"), ("enable", "Enable a node"), ("disable", "Disable a node")):
@@ -57,7 +58,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--vendor", choices=VENDORS)
     p.add_argument("--os", dest="os_name", choices=OSES)
     p.add_argument("--label", action="append", help="Replaces the labels; repeatable")
-    p.add_argument("--capacity-gb", type=float)
+    p.add_argument("--capacity-gb", type=float, help="memory the box can give to models")
+    p.add_argument("--memory-gb", type=float, help="the box's total memory")
     sub.add_parser("stats", help="Real traffic per box this week: calls, tok/s, latency, local share, spend avoided")
     p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
     p.add_argument("input", type=float)
@@ -222,7 +224,8 @@ def _dispatch(cmd: str, args) -> int:
         return _setup()
     if cmd == "add":
         node = store.fleet().add(args.name, args.url, args.kind, args.label, args.api_key_env,
-                                 capacity_gb=args.capacity_gb, vendor=args.vendor, os_name=args.os_name)
+                                 capacity_gb=args.capacity_gb, vendor=args.vendor, os_name=args.os_name,
+                                 memory_gb=args.memory_gb)
         print(f"added {node['name']} ({node['id']}) {node['base_url']} — probe with: hermes fleet status")
         return 0
     if cmd in ("rm", "enable", "disable"):
@@ -295,10 +298,12 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "set":
         node = store.fleet().update(args.node, vendor=args.vendor, os=args.os_name, labels=args.label,
-                                    capacity_gb=args.capacity_gb)
+                                    capacity_gb=args.capacity_gb, memory_gb=args.memory_gb)
         from .fleet import platform
         p = platform(node)
-        print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'} labels={','.join(node['labels']) or '-'}")
+        mem = f" memory={node['memory_gb']:g}GB" if node.get("memory_gb") else ""
+        ai = f" for-AI={node['capacity_gb']:g}GB" if node.get("capacity_gb") else ""
+        print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'}{mem}{ai} labels={','.join(node['labels']) or '-'}")
         return 0
     if cmd == "stats":
         print(stats_text())

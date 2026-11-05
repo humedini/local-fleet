@@ -43,6 +43,15 @@ nodes = [
     node(4, "strix", "10.0.0.40", "amd", "linux", [FALLBACK, "qwen3:32b", "gemma3:27b"],
          [FALLBACK], 0.25, 7, None, 58.4, ["lan"]),
 ]
+# Memory: total, what models may use, and what is loaded now (invented, plausible sizes).
+MEM = {"spark-a": (128, 120, {MAIN: 65e9}), "spark-b": (128, 120, {MAIN: 65e9, "llama3.3:70b": 37e9}),
+       "studio": (192, 160, {}), "strix": (128, 96, {FALLBACK: 10.4e9})}
+for n in nodes:
+    total, cap, sizes = MEM[n["name"]]
+    n["memory_gb"], n["capacity_gb"] = total, cap
+    h = n["last_health"]
+    h["sizes"], h["used_bytes"], h["version"] = sizes, int(sum(sizes.values())), "0.13.4"
+    h["free_vram_approx"] = int(cap * 1e9 - sum(sizes.values()))
 nodes[2]["perf"]["model"] = MAIN
 nodes[3]["perf"]["model"] = FALLBACK
 

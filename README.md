@@ -164,7 +164,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet model [<id>] [--fallback <id>]… [--no-fallback]` | the local model, and fallback models for smaller boxes |
 | `hermes fleet watch [--interval s] [--once]` | keep routing current |
 | `hermes fleet bench [<box>…] [--load]` | measure generation speed (tokens/sec) |
-| `hermes fleet set <box> [--vendor] [--os] [--label] [--capacity-gb]` | platform (for the Desktop icons), labels, capacity |
+| `hermes fleet set <box> [--vendor] [--os] [--label] [--memory-gb] [--capacity-gb]` | platform (Desktop icons), labels, total memory and memory for models |
 | `hermes fleet delegate on\|off\|status` | subagents on the fleet |
 | `hermes fleet aux on\|off\|status [--tasks]` | side tasks on the fleet |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |

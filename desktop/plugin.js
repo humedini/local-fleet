@@ -107,6 +107,13 @@ const CSS = `
 .hs-card-head .hs-lat{margin-left:auto;font-weight:400}
 .hs-card-perf{font-size:11px;color:var(--ui-text-tertiary);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-card-perf b{font-size:16px;font-weight:600;color:var(--ui-text-primary);font-variant-numeric:tabular-nums}
+.hs-mem{margin:8px 0 2px}
+.hs-mem-head{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--ui-text-tertiary)}
+.hs-mem-head b{font-weight:600;color:var(--ui-text-primary)}
+.hs-mem-bar{display:flex;height:8px;margin:4px 0 3px;border-radius:999px;background:var(--ui-stroke-tertiary);overflow:hidden;gap:1px}
+.hs-mem-bar>i{display:block;height:100%;background:var(--ui-text-quaternary)}
+.hs-mem-bar>i[data-yours=true]{background:${SPARK_GREEN}}
+.hs-mem-foot{font-size:10.5px;color:var(--ui-text-quaternary)}
 .hs-card-sub{font-size:11px;color:var(--ui-text-tertiary);margin:2px 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-card .hs-spark{display:block;width:100%;height:38px;margin-top:4px}
 .hs-models{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
@@ -504,7 +511,7 @@ function FleetMap({ s }) {
       const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `none of ${(s.model_tiers || [s.local_model]).join(', ')}`
         : tier > 0 ? [`fallback · ${s.model_tiers[tier]}`, (n.perf || {}).model === s.model_tiers[tier] ? speed(n) : null].filter(Boolean).join(' · ')
         : [speed(n) || (h.latency_ms != null ? `${h.latency_ms} ms` : null), typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
-           h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
+           n.capacity_gb && h.used_bytes != null ? `${gb(h.used_bytes)}/${n.capacity_gb} GB` : h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
       return jsxs('g', { children: [
         jsx(IsoServer, { x, y, tone, active, load: h.load_proxy }),
         jsx('circle', { cx: x + 62, cy: y - 22, r: 3.5, fill: active ? SPARK_GREEN : TONE_FILL[tone] }),
@@ -531,6 +538,42 @@ function Sparkline({ points }) {
   ] })
 }
 
+function gb(bytes) {
+  const v = bytes / 1e9
+  return v >= 10 ? Math.round(v) : Math.round(v * 10) / 10
+}
+
+// Apple silicon, GB10 (DGX Spark / GX10) and Strix Halo share one pool between CPU and GPU.
+function memoryWord(n) {
+  const vendor = ((n.platform || {}).vendor) || ''
+  const hint = `${n.name} ${(n.labels || []).join(' ')}`.toLowerCase()
+  const unified = vendor === 'apple' || /gb10|spark|gx10|dgx|strix|halo/.test(hint)
+  return unified ? 'unified memory' : 'memory'
+}
+
+// Box memory: total (memory_gb), what models may use (capacity_gb), and one bar segment per loaded
+// model, yours in green.
+function MemoryPanel({ n, s }) {
+  const h = n.last_health || {}
+  const sizes = h.sizes || {}
+  const used = h.used_bytes != null ? h.used_bytes : Object.values(sizes).reduce((a, b) => a + b, 0)
+  const cap = n.capacity_gb ? n.capacity_gb * 1e9 : 0
+  const tiers = s.model_tiers || []
+  const total = n.memory_gb ? `${n.memory_gb} GB ${memoryWord(n)}` : null
+  const head = [total, n.capacity_gb ? `${n.capacity_gb} GB for AI` : null].filter(Boolean).join(' · ') || 'memory'
+  const models = (h.models || n.models || []).filter(m => !/embed/i.test(m))
+  return jsxs('div', { className: 'hs-mem', children: [
+    jsxs('div', { className: 'hs-mem-head', children: [
+      jsx('b', { children: head }),
+      jsx('span', { children: cap ? `${gb(used)} / ${n.capacity_gb} GB used · ${gb(Math.max(0, cap - used))} GB free` : used ? `${gb(used)} GB loaded` : 'nothing loaded' })
+    ] }),
+    cap ? jsx('div', { className: 'hs-mem-bar', children: Object.entries(sizes).map(([m, b]) =>
+      jsx('i', { 'data-yours': tiers.includes(m), title: `${m} · ${gb(b)} GB`, style: { width: `${Math.max(1, (b / cap) * 100)}%` } }, m)) }) : null,
+    jsx('div', { className: 'hs-mem-foot', children: [h.version ? `${n.kind === 'ollama' ? 'Ollama' : n.kind} ${h.version}` : n.kind,
+      `${models.length} model${models.length === 1 ? '' : 's'} installed`].join(' · ') })
+  ] })
+}
+
 function NodeCard({ n, s }) {
   const h = n.last_health || {}
   const active = (s.applied || {}).kind === 'local' && (s.applied || {}).node_id === n.id
@@ -553,6 +596,7 @@ function NodeCard({ n, s }) {
       return t ? jsx('div', { className: 'hs-card-perf', children: `real traffic: ${t.calls} calls this week${t.tps ? ` · ${t.tps} tok/s effective` : ''}${t.latency_s ? ` · ${t.latency_s}s median` : ''}${t.errors ? ` · ${t.errors} errors` : ''}` }) : null
     })(),
     jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
+    jsx(MemoryPanel, { n, s }),
     jsx(Sparkline, { points: (s.series || {})[n.id] }),
     jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', {
       'data-want': m === want, 'data-fallback': (s.model_tiers || []).slice(1).includes(m),

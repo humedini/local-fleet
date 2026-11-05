@@ -77,13 +77,21 @@ def _ollama_load(client, node, want):
     others = [m for m in loaded if (m.get("name") or m.get("model")) not in wanted
               and "embed" not in (m.get("name") or m.get("model") or "").lower()]
     cap = float(node.get("capacity_gb") or 0) * 1e9
-    used = sum(int(m.get("size_vram") or m.get("size") or 0) for m in loaded)
+    sizes = {m.get("name") or m.get("model"): int(m.get("size_vram") or m.get("size") or 0) for m in loaded}
+    used = sum(sizes.values())
     if cap:
         load = sum(int(m.get("size_vram") or m.get("size") or 0) for m in others) / cap
         free = max(0, int(cap - used))
     else:
         load, free = 0.25 * len(others), None
-    return load, free, resident, expires
+    extra = {"sizes": sizes, "used_bytes": used}
+    try:  # a few bytes; the version is shown on the box's card
+        v = client.get(f"{origin(node['base_url'])}/api/version", headers=node_headers(node))
+        if v.status_code == 200:
+            extra["version"] = str(v.json().get("version") or "")[:20]
+    except Exception:  # cosmetic: an old Ollama without /api/version, or any hiccup, just shows no version
+        pass
+    return load, free, resident, expires, extra
 
 
 def _vllm_load(client, node, want):
@@ -95,9 +103,9 @@ def _vllm_load(client, node, want):
     queued = 0.25 * metrics.get("vllm:num_requests_waiting", 0.0)
     for cache in ("vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc"):  # renamed in newer vLLM
         if cache in metrics:
-            return metrics[cache] + queued, None, [], {}
+            return metrics[cache] + queued, None, [], {}, {}
     if "vllm:num_requests_running" in metrics:
-        return 0.25 * metrics["vllm:num_requests_running"] + queued, None, [], {}
+        return 0.25 * metrics["vllm:num_requests_running"] + queued, None, [], {}, {}
     raise ValueError("no vllm load metrics")
 
 
@@ -133,11 +141,12 @@ def probe_node(node: dict, client: httpx.Client, want="") -> dict:
     if loader is None:
         return _snapshot("ok", latency, detail, models)
     try:
-        load, free, resident, expires = loader(client, node, want)
+        load, free, resident, expires, extra = loader(client, node, want)
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         return _snapshot("degraded", latency, f"load unknown ({type(e).__name__})", models)
     snap = _snapshot("ok", latency, detail, models, load, free, resident)
     snap["expires"] = expires
+    snap.update(extra)
     return snap
 
 
