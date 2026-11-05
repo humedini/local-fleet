@@ -18,11 +18,12 @@ const PAGE_PATH = '/spark-fleet'
 const CSS = `
 .hs-chip{display:inline-flex;align-items:center;gap:6px}
 .hs-dot{width:7px;height:7px;border-radius:999px;flex-shrink:0;background:var(--ui-text-quaternary)}
-.hs-dot[data-tone=ok]{background:var(--ui-green,${SPARK_GREEN})}
+.hs-dot[data-tone=ok]{background:color-mix(in srgb,${SPARK_GREEN} 75%,var(--ui-text-tertiary))}
 .hs-dot[data-tone=spark]{background:${SPARK_GREEN};box-shadow:0 0 0 2px color-mix(in srgb,${SPARK_GREEN} 25%,transparent)}
 .hs-dot[data-tone=warn]{background:var(--ui-orange,#df6500)}
 .hs-dot[data-tone=bad]{background:var(--ui-red,#e5484d)}
-.hs-panel{width:320px;max-width:calc(100vw - 24px);padding:4px 2px 2px;font-size:12px;color:var(--ui-text-primary)}
+.hs-pop{width:340px;max-width:calc(100vw - 24px);padding:6px}
+.hs-panel{padding:2px 0 0;font-size:12px;color:var(--ui-text-primary)}
 .hs-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:2px 8px 0}
 .hs-title{font-weight:600;color:${SPARK_GREEN}}
 .hs-mode-tag{font-size:11px;color:var(--ui-text-tertiary)}
@@ -34,6 +35,7 @@ const CSS = `
 .hs-row[data-skipped=true] .hs-name,.hs-row[data-skipped=true] .hs-sub{opacity:.55}
 .hs-name{display:flex;align-items:center;gap:6px;min-width:0;font-weight:500}
 .hs-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-badge[data-kind=freest]{color:${SPARK_GREEN};border-color:color-mix(in srgb,${SPARK_GREEN} 50%,transparent)}
 .hs-badge{font-size:10px;font-weight:500;padding:0 5px;border-radius:999px;line-height:15px;color:var(--ui-text-secondary);border:1px solid var(--ui-stroke-secondary)}
 .hs-badge[data-kind=active]{color:#000;background:${SPARK_GREEN};border-color:${SPARK_GREEN}}
 .hs-lat{font-size:11px;font-variant-numeric:tabular-nums;color:var(--ui-text-tertiary)}
@@ -131,7 +133,7 @@ function NodeRow({ node, active, freest, want }) {
   const off = node.enabled === false
   const load = typeof h.load_proxy === 'number' ? h.load_proxy : null
   const missing = want && h.status && h.status !== 'down' && !(h.models || []).includes(want)
-  const tone = off ? '' : h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : h.status === 'down' ? 'bad' : ''
+  const tone = off || missing ? '' : h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : h.status === 'down' ? 'bad' : ''
   let sub
   if (off) sub = 'disabled'
   else if (h.status === 'down') sub = h.detail || 'down'
@@ -147,7 +149,7 @@ function NodeRow({ node, active, freest, want }) {
     jsxs('div', { className: 'hs-name', children: [
       jsx('span', { children: node.name }),
       active && jsx('em', { className: 'hs-badge', 'data-kind': 'active', style: { fontStyle: 'normal' }, children: 'active' }),
-      !active && freest && jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, children: 'freest' })
+      !active && freest && jsx('em', { className: 'hs-badge', 'data-kind': 'freest', style: { fontStyle: 'normal' }, children: 'freest' })
     ] }),
     jsx('span', { className: 'hs-lat', children: h.latency_ms != null && !off ? `${h.latency_ms} ms` : '' }),
     jsxs('div', { className: 'hs-sub', children: [
@@ -182,7 +184,7 @@ function Panel({ ctx, status }) {
   return jsxs('div', { className: 'hs-panel', children: [
     jsxs('div', { className: 'hs-head', children: [
       jsx('span', { className: 'hs-title', children: 'Spark fleet' }),
-      jsx('span', { className: 'hs-mode-tag', children: `mode: ${s.mode || '…'}` })
+      jsx('span', { className: 'hs-mode-tag', children: (s.nodes || []).length ? `${s.healthy ?? 0}/${s.nodes.filter(n => n.enabled !== false).length} boxes up` : '' })
     ] }),
     jsxs('div', { className: 'hs-route', title: `${lead}${strong}${tail}`, children: [lead, jsx('b', { children: strong }), tail] }),
     jsx('div', { className: 'hs-list', children: (s.nodes || []).length
@@ -228,7 +230,7 @@ function Chip({ ctx }) {
       variant: 'ghost', size: 'micro', 'aria-label': `Spark fleet: ${c.text}`, className: 'text-[0.6875rem]',
       children: jsxs('span', { className: 'hs-chip', children: [jsx('span', { className: 'hs-dot', 'data-tone': c.tone }), c.text] })
     }) }),
-    jsx(PopoverContent, { side: 'top', align: 'end', 'aria-label': 'Spark fleet', children: failed
+    jsx(PopoverContent, { side: 'top', align: 'end', className: 'hs-pop', 'aria-label': 'Spark fleet', children: failed
       ? jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() })
       : jsx(Panel, { ctx, status: q.data }) })
   ] })
