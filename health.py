@@ -72,7 +72,8 @@ def _ollama_load(client, node, want):
     loaded = r.json().get("models") or []
     resident = [m.get("name") or m.get("model") for m in loaded]
     expires = {m.get("name") or m.get("model"): m.get("expires_at") for m in loaded if m.get("expires_at")}
-    others = [m for m in loaded if (m.get("name") or m.get("model")) != want]
+    wanted = {want} if isinstance(want, str) else set(want or [])
+    others = [m for m in loaded if (m.get("name") or m.get("model")) not in wanted]
     cap = float(node.get("capacity_gb") or 0) * 1e9
     used = sum(int(m.get("size_vram") or m.get("size") or 0) for m in loaded)
     if cap:
@@ -126,7 +127,6 @@ def probe_node(node: dict, client: httpx.Client, want="") -> dict:
         return _snapshot("down", None, f"{type(e).__name__}: {e}"[:120])
     latency = round((time.monotonic() - t0) * 1000)
     detail = _detail(models, want)
-    want = want if isinstance(want, str) else (want[0] if want else "")
     loader = _LOAD.get(node.get("kind"))
     if loader is None:
         return _snapshot("ok", latency, detail, models)

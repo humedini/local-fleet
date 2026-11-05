@@ -132,3 +132,10 @@ def test_detail_names_the_fallback_tier():
     respx.get("http://s2:11434/api/ps").respond(json=ps())
     assert probe_all([S2], want=["big", "small"])["b"]["detail"] == "ok · fallback small"
     assert probe_all([S2], want=["big"])["b"]["detail"] == "ok, but no big"
+
+
+@respx.mock
+def test_neither_main_nor_fallback_model_counts_as_load():
+    respx.get("http://s2:11434/v1/models").respond(json=models("big", "small", "other"))
+    respx.get("http://s2:11434/api/ps").respond(json=ps("small", "other"))
+    assert probe_all([S2], want=["big", "small"])["b"]["load_proxy"] == 0.25   # only "other"
