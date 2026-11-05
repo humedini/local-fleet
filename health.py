@@ -37,9 +37,18 @@ def origin(base_url: str) -> str:
     return f"{p.scheme}://{p.netloc}{path}"
 
 
+def _secret(name: str) -> str:
+    try:
+        from agent.secret_scope import get_secret
+    except ImportError:  # outside Hermes (unit tests): the process environment
+        return os.environ.get(name, "")
+    return get_secret(name) or ""
+
+
 def node_headers(node: dict) -> dict:
+    """Auth for one node, from the env var it names, sent to that node only."""
     env = node.get("api_key_env")
-    key = os.environ.get(env, "") if env else ""
+    key = _secret(env) if env else ""
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 

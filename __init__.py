@@ -6,6 +6,7 @@ runs, and settings are read when a command or tool actually runs).
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 from . import cli, schemas, slash, store, tools
 from .constants import TOOLSET
@@ -51,3 +52,4 @@ def register(ctx):
                              description="Fleet registry, health probes, freest-box routing, "
                                          "cloud failover and failback.")
     ctx.register_hook("on_session_start", _refresh_on_session_start)
+    ctx.register_skill("spark-fleet", Path(__file__).parent / "skills" / "spark-fleet" / "SKILL.md")

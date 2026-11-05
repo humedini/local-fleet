@@ -1,0 +1,6 @@
+{
+  "name": "hermes-spark",
+  "label": "Spark Fleet",
+  "api": "plugin_api.py",
+  "tab": { "hidden": true }
+}

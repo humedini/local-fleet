@@ -1,0 +1,26 @@
+# Draft of plugin-catalog/hermes-spark.yaml for the catalog PR. Fill `sha` with the full 40-char
+# commit of the v0.1.0 tag and `image` with the screenshot pinned to that sha before opening the PR.
+name: hermes-spark
+repo: https://github.com/humedini/hermes-spark
+sha: 0000000000000000000000000000000000000000
+title: Spark Fleet
+description: 'Health-aware routing across your own inference boxes (DGX Spark / GB10, Ollama, vLLM, LiteLLM).
+  Probes each box, makes the freest healthy one the primary model, fails over to your cloud model when every
+  box is down and fails back when one recovers; prefer-local, prefer-cloud and auto modes. Writes only
+  model.provider/default/base_url/api_mode/key_env and appends your cloud entry to fallback_providers (core keeps
+  per-turn failover); `hermes spark restore` puts your original primary back. CLI `hermes spark`, slash `/spark`,
+  Desktop status-bar chip and fleet panel, opt-in DGX Spark theme. Network: HTTP only to the base URLs you
+  register. Tools are read-only except an Ollama-only model pull; no remote command execution.'
+maintainer: humedini
+tier: community
+category: models
+version: "0.1.0"
+requires_hermes: ">=0.22"
+docs_url: https://github.com/humedini/hermes-spark#readme
+readme: true
+platforms: []
+capabilities:
+  provides_tools: [spark_status, spark_list_nodes, spark_pull_model]
+  provides_hooks: [on_session_start]
+  provides_middleware: []
+  requires_env: []
