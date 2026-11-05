@@ -73,7 +73,9 @@ def _ollama_load(client, node, want):
     resident = [m.get("name") or m.get("model") for m in loaded]
     expires = {m.get("name") or m.get("model"): m.get("expires_at") for m in loaded if m.get("expires_at")}
     wanted = {want} if isinstance(want, str) else set(want or [])
-    others = [m for m in loaded if (m.get("name") or m.get("model")) not in wanted]
+    # Embedding models are small and stay loaded for search tools; they are not real load.
+    others = [m for m in loaded if (m.get("name") or m.get("model")) not in wanted
+              and "embed" not in (m.get("name") or m.get("model") or "").lower()]
     cap = float(node.get("capacity_gb") or 0) * 1e9
     used = sum(int(m.get("size_vram") or m.get("size") or 0) for m in loaded)
     if cap:
