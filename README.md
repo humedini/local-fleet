@@ -7,14 +7,23 @@ Register your DGX Spark / GB10 boxes, Ollama hosts, vLLM servers or a LiteLLM ga
 ```
 $ hermes fleet status
   name         status    health                 kind              url
-  gx10         ok        5ms load=0.207 free=95GB ollama            http://192.168.1.50:11434/v1  ← active
-  spark2       ok        3ms load=0             ollama            http://192.168.1.51:11434/v1  (least busy)
-  mini         ok        21ms load=0.25         ollama            http://192.168.1.52:11434/v1  ok, but no qwen3.6:35b-a3b
+  spark-a      ok        41.8t/s 4ms load=0 free=61GB      ollama            http://10.0.0.21:11434/v1  ← active  (least busy)
+  spark-b      ok        39.6t/s 5ms load=0.44 free=18GB   ollama            http://10.0.0.22:11434/v1
+  studio       ok        33.2t/s 9ms load=0                ollama            http://10.0.0.30:11434/v1
+  strix        ok        58.4t/s 7ms load=0.25             ollama            http://10.0.0.40:11434/v1  fallback · qwen3:14b
 
 mode: auto
-route: gx10 · qwen3.6:35b-a3b · http://192.168.1.50:11434/v1
-why: staying on gx10
+route: spark-a · gpt-oss:120b · http://10.0.0.21:11434/v1
+why: staying on spark-a
 ```
+
+![Local Fleet page in Hermes Desktop: Hermes routed to the least busy box, two boxes taking subagent traffic](docs/img/fleet-map.gif)
+
+| Fleet page | Status-bar chip |
+|---|---|
+| ![The Local Fleet page: stats, controls, hardware map, per-box cards and routing history](docs/img/fleet-page.png) | ![The status-bar chip and its fleet panel](docs/img/fleet-chip.png) |
+
+*Screenshots use synthetic data (`scripts/screenshots/`): invented boxes, addresses and traffic.*
 
 It is a standalone plugin, not a core change: it writes the same config keys you would set by hand, and leaves turn-level failover to Hermes's own `fallback_providers`.
 
@@ -32,7 +41,7 @@ Requires Hermes 0.22 or newer. One dependency: `httpx`.
 hermes fleet add --name gx10 --url http://192.168.1.50:11434/v1 --kind ollama --label lan --capacity-gb 120
 hermes fleet add --name spark2 --url http://192.168.1.51:11434/v1 --kind ollama
 hermes fleet cloud openrouter anthropic/claude-sonnet-4     # the backup when every box is down
-hermes fleet model qwen3.6:35b-a3b                          # optional: the model to run locally
+hermes fleet model gpt-oss:120b                             # optional: the model to run locally
 hermes fleet use --best
 ```
 
@@ -59,7 +68,7 @@ Lowest load wins, then preferred labels (`prefer_labels`), then most free memory
 ### Fallback models
 
 ```bash
-hermes fleet model qwen3.6:35b-a3b-64k --fallback qwen3:14b
+hermes fleet model gpt-oss:120b --fallback qwen3:14b
 ```
 
 Boxes that cannot hold your main model can still help: with fallback models set, Local Fleet uses the least busy box with the main model; when no box has it, the least busy box with the first fallback model, and so on; cloud only after that. When a box with the main model comes back, Hermes moves back to it. Subagents and side tasks follow the same order. `--no-fallback` clears the list.

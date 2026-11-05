@@ -3,8 +3,8 @@
 // Loaded uncompiled: jsx()/jsxs() calls, no JSX syntax. Styling is theme tokens; Spark green only
 // marks fleet-owned state (routed locally, load meters).
 import {
-  Button, COMPOSER_AREAS, host, haptic, MODEL_MENU_ROW_AREA, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, requestTheme, ROUTES_AREA,
-  SIDEBAR_NAV_AREA, STATUSBAR_AREAS, THEMES_AREA, useQuery, useQueryClient
+  Button, COMPOSER_AREAS, host, haptic, MODEL_MENU_ROW_AREA, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, ROUTES_AREA,
+  SIDEBAR_NAV_AREA, STATUSBAR_AREAS, THEMES_AREA, useQuery, useQueryClient, useTheme
 } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
@@ -175,6 +175,28 @@ function speed(n) {
   return p.tps ? `${p.tps >= 100 ? Math.round(p.tps) : p.tps} tok/s` : ''
 }
 
+// The theme link toggles: on the DGX Spark theme it offers the theme the user had before (kept in
+// the plugin's own storage), else Desktop's default.
+const SPARK_THEME = 'dgx-spark'
+const DEFAULT_THEME = 'nous'
+
+function ThemeLink({ ctx }) {
+  const { themeName, setTheme } = useTheme()
+  const on = themeName === SPARK_THEME
+  const back = () => {
+    let prev = DEFAULT_THEME
+    try { prev = ctx.storage.get('themeBefore', DEFAULT_THEME) || DEFAULT_THEME } catch (err) { /* storage unavailable */ }
+    setTheme(prev === SPARK_THEME ? DEFAULT_THEME : prev)
+  }
+  const go = () => {
+    try { ctx.storage.set('themeBefore', themeName) } catch (err) { /* storage unavailable */ }
+    setTheme(SPARK_THEME)
+  }
+  return jsx('button', { type: 'button', className: 'hs-link', onClick: on ? back : go,
+    title: on ? 'Switch back to your previous theme' : 'Black and NVIDIA green',
+    children: on ? 'Default theme' : 'DGX Spark theme' })
+}
+
 function ago(iso) {
   if (!iso) return ''
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000)
@@ -280,7 +302,7 @@ function Panel({ ctx, status }) {
     jsxs('div', { className: 'hs-foot', children: [
       jsx('button', { type: 'button', className: 'hs-link', onClick: () => host.navigate(PAGE_PATH), children: 'Open fleet map' }),
       jsx('span', { children: s.last_probe_at ? `probed ${ago(s.last_probe_at)}` : '' }),
-      jsx('button', { type: 'button', className: 'hs-link', onClick: () => requestTheme('dgx-spark'), children: 'DGX Spark theme' })
+      jsx(ThemeLink, { ctx })
     ] })
   ] })
 }
@@ -476,7 +498,8 @@ function FleetMap({ s }) {
       const { x, y } = pos[i]
       const missing = skipped(n, s)
       const tier = tierOf(n, s)
-      const resident = (h.resident || []).slice(0, 2).join(', ')
+      const res = (h.resident || []).filter(m => !/embed/i.test(m))
+      const resident = res.length ? res[0] + (res.length > 1 ? ` +${res.length - 1}` : '') : ''
       const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `none of ${(s.model_tiers || [s.local_model]).join(', ')}`
         : tier > 0 ? [`fallback · ${s.model_tiers[tier]}`, (n.perf || {}).model === s.model_tiers[tier] ? speed(n) : null].filter(Boolean).join(' · ')
         : [speed(n) || (h.latency_ms != null ? `${h.latency_ms} ms` : null), typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
@@ -487,7 +510,7 @@ function FleetMap({ s }) {
         ...marksFor(n).map(([k, t], j) => jsx(Mark, { kind: k, title: t, x: x + 70 + j * 19, y: y - 31, size: 16 }, k)),
         jsx('text', { x: x + 72 + marksFor(n).length * 19, y: y - 18, style: { fontWeight: 600 }, children: n.name + (active ? '  ← routed' : '') }),
         jsx('text', { className: 't2', x: x + 70, y: y - 3, children: line2 }),
-        resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 34 ? resident.slice(0, 33) + '…' : resident}` }),
+        resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 26 ? resident.slice(0, 25) + '…' : resident}` }),
         liveCalls(s, n) > 0 && jsx('text', { className: 't2', x: x + 70, y: y + 25, style: { fill: '#6ee7ff' }, children: `● live · ${liveCalls(s, n)} call${liveCalls(s, n) === 1 ? '' : 's'}${recentDelegation(s, n) ? ' · subagents' : ''}` })
       ] }, n.id)
     })

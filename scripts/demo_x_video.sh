@@ -4,7 +4,7 @@
 #   export HERMES_HOME=$(mktemp -d); mkdir -p $HERMES_HOME/plugins
 #   ln -s "$PWD" $HERMES_HOME/plugins/local-fleet && hermes plugins enable local-fleet
 #   SPARK1=http://192.168.1.50:11434/v1 SPARK2=http://192.168.1.51:11434/v1 \
-#   CLOUD_PROVIDER=openrouter CLOUD_MODEL=anthropic/claude-sonnet-4 MODEL=qwen3.6:35b-a3b scripts/demo_x_video.sh
+#   CLOUD_PROVIDER=openrouter CLOUD_MODEL=anthropic/claude-sonnet-4 MODEL=gpt-oss:120b scripts/demo_x_video.sh
 # Beat 4 needs SPARK1 to go down: stop Ollama on that box when prompted (or pull its cable).
 set -euo pipefail
 : "${SPARK1:?base URL of box 1}" "${SPARK2:?base URL of box 2}"

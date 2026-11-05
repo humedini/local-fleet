@@ -182,7 +182,7 @@ def _check_platform(vendor, os_name):
 _GUESSES = (
     (("gx10", "spark", "dgx", "gb10", "jetson", "thor", "rtx", "4090", "5090", "a100", "h100", "nvidia"), "nvidia", "linux"),
     (("mac", "mini", "studio", "mbp", "macbook", "m1", "m2", "m3", "m4", "m5"), "apple", "macos"),
-    (("strix", "z13", "ryzen", "radeon", "amd", "halo", "framework"), "amd", None),
+    (("strix", "ryzen", "radeon", "amd", "halo", "framework"), "amd", None),
     (("arc", "intel", "nuc"), "intel", None),
 )
 
