@@ -340,9 +340,10 @@ function Chip({ ctx }) {
 // SVG only (the plugin import whitelist allows no WebGL libraries); isometric server boxes.
 
 const W = 960
-const H = 470
-const HUB = { x: 165, y: 255 }
-const CLOUD = { x: 520, y: 70 }
+const H = 520
+const HUB = { x: 150, y: 300 }
+// Cloud backup sits straight above the hub, joined by a vertical line.
+const CLOUD = { x: 150, y: 74 }
 
 function nodeTone(n) {
   const h = n.last_health || {}
@@ -369,13 +370,13 @@ const TONE_FILL = { ok: 'var(--ui-green,#3fb950)', warn: 'var(--ui-orange,#df650
 function nodePositions(count) {
   const cols = count > 4 ? 2 : 1
   const rows = Math.ceil(count / cols)
-  const top = 150
-  const span = H - top - 40
+  const top = 110
+  const span = H - top - 80  // room under the last box for its labels
   const step = rows > 1 ? span / (rows - 1) : 0
   return Array.from({ length: count }, (_, i) => {
     const col = cols === 2 ? i % 2 : 0
     const row = cols === 2 ? Math.floor(i / 2) : i
-    return { x: cols === 2 ? 640 + col * 190 : 720, y: rows > 1 ? top + row * step : top + span / 2 }
+    return { x: cols === 2 ? 500 + col * 210 : 590, y: rows > 1 ? top + row * step : top + span / 2 }
   })
 }
 
@@ -421,7 +422,7 @@ function Hub({ s }) {
     jsx('text', { x: HUB.x, y: HUB.y + 8, textAnchor: 'middle', style: { fontSize: 24, fontWeight: 700, fill: SPARK_GREEN }, children: 'H' }),
     jsx('text', { x: HUB.x, y: HUB.y + 70, textAnchor: 'middle', style: { fontWeight: 600 }, children: 'Hermes' }),
     jsx('text', { className: 't2', x: HUB.x, y: HUB.y + 86, textAnchor: 'middle', children: model.length > 30 ? `${model.slice(0, 29)}…` : model }),
-    jsx('text', { className: 't3', x: HUB.x, y: HUB.y - 60, textAnchor: 'middle', children: 'AGENT' })
+    null
   ] })
 }
 
@@ -474,7 +475,7 @@ function FleetMap({ s }) {
   const cloudLive = a.kind === 'cloud'
   const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const hubEdge = { x: HUB.x + 46, y: HUB.y }
-  const cloudPath = `M${HUB.x} ${HUB.y - 46} C${HUB.x} ${CLOUD.y + 10}, ${CLOUD.x - 140} ${CLOUD.y}, ${CLOUD.x - 46} ${CLOUD.y}`
+  const cloudPath = `M${HUB.x} ${HUB.y - 46} L${CLOUD.x} ${CLOUD.y + 16}`
   return jsx('div', { className: 'hs-map', children: jsxs('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Local Fleet map', children: [
     jsx('path', { id: 'hs-wire-cloud', className: 'hs-wire', 'data-cloud': true, 'data-live': cloudLive, d: cloudPath }),
     cloudLive && !reduced && Packets({ id: 'hs-wire-cloud', color: 'var(--ui-orange,#df6500)' }),
