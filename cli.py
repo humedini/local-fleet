@@ -226,7 +226,7 @@ def _dispatch(cmd: str, args) -> int:
     if cmd in ("rm", "enable", "disable"):
         f = store.fleet()
         node = f.remove(args.node) if cmd == "rm" else f.set_enabled(args.node, cmd == "enable")
-        print(f"{cmd}{'d' if cmd != 'rm' else 'oved'} {node['name']}")
+        print(f"{ {'rm': 'removed', 'enable': 'enabled', 'disable': 'disabled'}[cmd]} {node['name']}")
         return 0
     if cmd == "list":
         f, applied = store.fleet(), store.load_state().get("applied") or {}

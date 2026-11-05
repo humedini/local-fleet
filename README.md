@@ -79,6 +79,39 @@ local-fleet chooses the **primary**. Hermes core owns the **per-turn** fallback 
 
 The gateway and Desktop rebuild the agent when the primary changes, so a new route applies from the **next message**. A classic CLI session that is already open keeps its model until the next session. This is deliberate: Hermes keeps a conversation on one model so its prompt cache stays valid.
 
+## Subagents on the fleet
+
+```bash
+hermes fleet delegate on        # delegation.backend: fleet
+```
+
+`delegate_task` subagents then run on your boxes: each task gets the freest healthy box, and the tasks of one fan-out take turns down the freest-first list, so four subagents land on four boxes and run in parallel. A task can say `where: cloud` (frontier model), `local` or `any` (the default: local when a box is up, else cloud); every local route keeps your cloud model as its fallback. Each result says which box ran it (`route.label`). Applies from each session's next session, or now with `/delegation fleet --now`; `hermes fleet delegate off` goes back to the default.
+
+## Side tasks on the fleet
+
+```bash
+hermes fleet aux on                                  # titles + compression
+hermes fleet aux on --tasks title_generation,compression,vision
+hermes fleet aux off                                 # your own settings back
+```
+
+Hermes's auxiliary tasks run on the freest healthy box whatever the mode, with your cloud model as their fallback chain: cloud brain, local sidecar. They follow the freest box as it changes, go back to your own settings when no box is healthy, and never touch the main conversation's prompt cache.
+
+## Real traffic and spend avoided
+
+Local Fleet listens to Hermes's own per-call observer hooks and keeps, per call, only the endpoint, model, token counts and duration (never the request or response) in `traffic.jsonl` in its data directory (about 6000 calls). From that:
+
+```bash
+hermes fleet stats
+hermes fleet price 3 15 --currency £     # your cloud model's price per million tokens (input, output)
+```
+
+shows calls, errors, effective tok/s (real calls with 32+ output tokens, prompt processing included) and median latency per box, how many of the week's tokens ran locally, and what those would have cost on cloud. The Desktop map lights the wire of every box taking calls right now, subagents included.
+
+## Warm before switching
+
+Before Hermes is switched to an Ollama box (Use freest, failover, failback), Local Fleet loads the model there and waits up to `warm_timeout_s` (120 s), so the first message after a switch does not pay for a cold load. `warm_before_switch: false` turns it off.
+
 ## Keeping it current
 
 Routing is re-evaluated when you run a command, when a new session starts (in the background, at most once per `probe_interval_s`), and continuously with:
@@ -113,6 +146,10 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet watch [--interval s] [--once]` | keep routing current |
 | `hermes fleet bench [<box>…] [--load]` | measure generation speed (tokens/sec) |
 | `hermes fleet set <box> [--vendor] [--os] [--label] [--capacity-gb]` | platform (for the Desktop icons), labels, capacity |
+| `hermes fleet delegate on\|off\|status` | subagents on the fleet |
+| `hermes fleet aux on\|off\|status [--tasks]` | side tasks on the fleet |
+| `hermes fleet stats` | real traffic per box, local share, spend avoided |
+| `hermes fleet price <in> <out> [--currency]` | cloud price per million tokens |
 | `hermes fleet endpoint` | the primary Hermes is using |
 | `hermes fleet doctor` | readiness check |
 | `hermes fleet restore` | put back your original primary |
@@ -150,8 +187,8 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 ## Disclosures
 
 - **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
-- **Files**: reads and writes `fleet.json` and `state.json` in its own plugin data directory; writes the config keys listed above.
-- **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`). `hermes fleet watch` runs only when you start it.
+- **Files**: reads and writes `fleet.json`, `state.json` and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory; writes the config keys listed above, plus `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` blocks (`aux on/off`, restored on off).
+- **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`), with a speed bench when one is due. `hermes fleet watch` runs only when you start it. Observer hooks (`post_api_request`, `api_request_error`, `post_auxiliary_call`) append one line per call.
 - **Credentials**: none stored. Optional per-box keys are read by env var name through Hermes's secret resolver.
 - **Plain HTTP**: Ollama and vLLM usually serve plain HTTP. `doctor` warns if a box's URL is plain HTTP to a public address; keep boxes on your LAN, a tailnet or behind TLS.
 

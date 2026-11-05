@@ -22,6 +22,7 @@ from . import store
 FILE = "traffic.jsonl"
 MAX_BYTES = 2_000_000
 KEEP_LINES = 6000
+MIN_TPS_TOKENS = 32  # shorter replies say more about load time and prompt size than about speed
 
 _nodes_cache: tuple[float, dict] = (0.0, {})
 
@@ -139,7 +140,7 @@ def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: 
             b["out"] += ln.get("out", 0)
             if now - ln.get("t", 0) <= 90:
                 b["live"] += 1
-            if ln.get("ok") and ln.get("out") and ln.get("d"):
+            if ln.get("ok") and ln.get("out", 0) >= MIN_TPS_TOKENS and ln.get("d"):
                 b["_tps"].append(ln["out"] / ln["d"])
                 b["_lat"].append(ln["d"])
             local_in += ln.get("in", 0)
