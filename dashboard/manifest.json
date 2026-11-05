@@ -1,6 +1,6 @@
 {
-  "name": "hermes-spark",
-  "label": "Spark Fleet",
+  "name": "local-fleet",
+  "label": "Local Fleet",
   "api": "plugin_api.py",
   "tab": { "hidden": true }
 }

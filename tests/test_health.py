@@ -1,7 +1,7 @@
 import httpx
 import respx
 
-from hermes_spark.health import origin, pick_freest, probe_all, score
+from local_fleet.health import origin, pick_freest, probe_all, score
 
 GX = {"id": "a", "name": "gx10", "base_url": "http://gx:11434/v1", "kind": "ollama", "labels": ["lan"]}
 S2 = {"id": "b", "name": "spark2", "base_url": "http://s2:11434/v1", "kind": "ollama", "labels": []}

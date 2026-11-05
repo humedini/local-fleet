@@ -1,18 +1,18 @@
-name: hermes-spark
+name: local-fleet
 version: 0.1.0
 manifest_version: 2
 api_version: 1
-description: Multi-Spark / Ollama-compatible fleet for Hermes — health probes, freest-box routing, prefer-local / prefer-cloud / auto, cloud failover and failback, Desktop chip and /spark
+description: Local inference fleet for Hermes (DGX Spark, Ollama, vLLM, LiteLLM) — health probes, freest-box routing, prefer-local / prefer-cloud / auto, cloud failover and failback, Desktop chip and /fleet
 author: Jonathan Hume
 license: MIT
-homepage: https://github.com/humedini/hermes-spark
-tags: [spark, ollama, vllm, fleet, routing, desktop, dgx]
+homepage: https://github.com/humedini/local-fleet
+tags: [local, fleet, ollama, vllm, litellm, routing, failover, desktop, dgx-spark]
 requires_hermes: ">=0.22"
 
 provides_tools:
-  - spark_status
-  - spark_list_nodes
-  - spark_pull_model
+  - fleet_status
+  - fleet_list_nodes
+  - fleet_pull_model
 
 provides_hooks:
   - on_session_start

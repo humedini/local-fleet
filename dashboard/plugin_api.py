@@ -1,4 +1,4 @@
-"""REST for the Desktop chip and fleet panel, mounted at /api/plugins/hermes-spark/.
+"""REST for the Desktop chip and fleet panel, mounted at /api/plugins/local-fleet/.
 
 Hermes imports this file on its own, outside the plugin package, so it loads the package from
 the directory above under a private module name. Every route runs the (blocking) engine in a
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-_PKG = "hermes_spark_desktop_api"
+_PKG = "local_fleet_desktop_api"
 
 
 def _package():
@@ -28,9 +28,9 @@ def _package():
 
 
 _package()
-from hermes_spark_desktop_api import engine, store  # noqa: E402
-from hermes_spark_desktop_api.constants import MODES  # noqa: E402
-from hermes_spark_desktop_api.fleet import FleetError, public_node  # noqa: E402
+from local_fleet_desktop_api import engine, store  # noqa: E402
+from local_fleet_desktop_api.constants import MODES  # noqa: E402
+from local_fleet_desktop_api.fleet import FleetError, public_node  # noqa: E402
 
 router = APIRouter()
 

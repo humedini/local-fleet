@@ -1,4 +1,4 @@
-"""hermes-spark: health-aware routing across a fleet of Spark / Ollama-compatible boxes.
+"""local-fleet: health-aware routing across your own inference boxes (DGX Spark, Ollama, vLLM, LiteLLM).
 
 register() only wires things up: no network, no config reads (doctor blocks sockets while it
 runs, and settings are read when a command or tool actually runs).
@@ -34,22 +34,22 @@ def _refresh_on_session_start(**kwargs) -> None:
         finally:
             _bg.release()
 
-    threading.Thread(target=run, name="hermes-spark-refresh", daemon=True).start()
+    threading.Thread(target=run, name="local-fleet-refresh", daemon=True).start()
 
 
 def register(ctx):
     store.bind(ctx)
-    for schema, handler in ((schemas.SPARK_STATUS, tools.spark_status),
-                            (schemas.SPARK_LIST_NODES, tools.spark_list_nodes),
-                            (schemas.SPARK_PULL_MODEL, tools.spark_pull_model)):
+    for schema, handler in ((schemas.FLEET_STATUS, tools.fleet_status),
+                            (schemas.FLEET_LIST_NODES, tools.fleet_list_nodes),
+                            (schemas.FLEET_PULL_MODEL, tools.fleet_pull_model)):
         ctx.register_tool(name=schema["name"], toolset=TOOLSET, schema=schema, handler=handler,
                           check_fn=tools.fleet_ready, emoji="💚")
-    ctx.register_command("spark", handler=slash.handle,
-                         description="Spark fleet: status, list, mode, use, doctor",
+    ctx.register_command("fleet", handler=slash.handle,
+                         description="Local inference fleet: status, list, mode, use, doctor",
                          args_hint="[status|list|mode|use|doctor]")
-    ctx.register_cli_command(name="spark", help="Route Hermes across Spark / Ollama-compatible boxes",
+    ctx.register_cli_command(name="fleet", help="Route Hermes across your local inference boxes (DGX Spark, Ollama, vLLM)",
                              setup_fn=cli.setup_argparse, handler_fn=cli.main,
                              description="Fleet registry, health probes, freest-box routing, "
                                          "cloud failover and failback.")
     ctx.register_hook("on_session_start", _refresh_on_session_start)
-    ctx.register_skill("spark-fleet", Path(__file__).parent / "skills" / "spark-fleet" / "SKILL.md")
+    ctx.register_skill("local-fleet", Path(__file__).parent / "skills" / "local-fleet" / "SKILL.md")

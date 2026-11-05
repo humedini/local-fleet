@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_spark.fleet import Fleet, FleetError, normalize_url, public_node
+from local_fleet.fleet import Fleet, FleetError, normalize_url, public_node
 
 FIXTURE = Path(__file__).parent / "fixtures" / "fleet.json"
 

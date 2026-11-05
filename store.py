@@ -1,10 +1,10 @@
-"""Where hermes-spark keeps things, and how it reads and writes its settings.
+"""Where local-fleet keeps things, and how it reads and writes its settings.
 
 - Fleet (`fleet.json`) and runtime state (`state.json`: what was applied, the last decision,
-  the user's original primary) live in `plugin_data_dir("hermes-spark")`, which survives
+  the user's original primary) live in `plugin_data_dir("local-fleet")`, which survives
   `hermes plugins update`/`remove` and follows the active profile. Resolved on every call,
   never cached, so a multiplexed process lands in the right profile.
-- Settings (mode, cloud target, timeouts) live in `plugins.entries.hermes-spark.settings` of
+- Settings (mode, cloud target, timeouts) live in `plugins.entries.local-fleet.settings` of
   the user's config, written through the plugin context when we have one (the agent process),
   else through the same partial merge-save core uses for plugin settings (the Desktop backend).
 """

@@ -79,7 +79,7 @@ class Fleet:
     def get(self, ref: str) -> dict:
         node = self.find(ref)
         if node is None:
-            raise FleetError(f"no node {ref!r}; see `hermes spark list`")
+            raise FleetError(f"no node {ref!r}; see `hermes fleet list`")
         return node
 
     def add(self, name: str, url: str, kind: str = "ollama", labels=None,

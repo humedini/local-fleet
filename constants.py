@@ -1,7 +1,7 @@
-"""Names and defaults shared across hermes-spark."""
+"""Names and defaults shared across local-fleet."""
 
-PLUGIN = "hermes-spark"
-TOOLSET = "hermes_spark"
+PLUGIN = "local-fleet"
+TOOLSET = "local_fleet"
 
 KINDS = ("ollama", "vllm", "litellm", "openai-compatible")
 MODES = ("prefer-local", "prefer-cloud", "auto")

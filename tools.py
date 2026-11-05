@@ -25,7 +25,7 @@ def fleet_ready() -> bool:
         return False
 
 
-def spark_status(args: dict, **kwargs) -> str:
+def fleet_status(args: dict, **kwargs) -> str:
     try:
         d = engine.apply_policy(dry_run=True)
         nodes = [public_node(n) for n in store.fleet().nodes]
@@ -36,19 +36,19 @@ def spark_status(args: dict, **kwargs) -> str:
         return _err(f"status failed: {e}")
 
 
-def spark_list_nodes(args: dict, **kwargs) -> str:
+def fleet_list_nodes(args: dict, **kwargs) -> str:
     try:
         return json.dumps({"ok": True, "nodes": [public_node(n) for n in store.fleet().nodes]})
     except Exception as e:
         return _err(f"list failed: {e}")
 
 
-def spark_pull_model(args: dict, **kwargs) -> str:
+def fleet_pull_model(args: dict, **kwargs) -> str:
     try:
         node = store.fleet().find(str(args.get("node", "")))
         model = str(args.get("model", "")).strip()
         if node is None:
-            return _err("unknown node; see spark_list_nodes")
+            return _err("unknown node; see fleet_list_nodes")
         if node.get("kind") != "ollama":
             return _err(f"{node['name']} is kind {node.get('kind')}; pulls are only for ollama nodes")
         if not _TAG.match(model):

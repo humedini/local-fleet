@@ -26,8 +26,8 @@ jobs:
           python - <<'PY'
           import yaml
           m = yaml.safe_load(open("plugin.yaml"))
-          assert m["name"] == "hermes-spark" and m["manifest_version"] == 2
-          assert sorted(m["provides_tools"]) == ["spark_list_nodes", "spark_pull_model", "spark_status"]
+          assert m["name"] == "local-fleet" and m["manifest_version"] == 2
+          assert sorted(m["provides_tools"]) == ["fleet_list_nodes", "fleet_pull_model", "fleet_status"]
           assert m["provides_hooks"] == ["on_session_start"]
           for k, v in m["config_schema"].items():
               assert v["type"] in ("str", "int", "float", "bool", "list"), k

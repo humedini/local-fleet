@@ -7,7 +7,7 @@ import types
 import pytest
 import respx
 
-from hermes_spark import cli, config_write, engine, slash, store, tools
+from local_fleet import cli, config_write, engine, slash, store, tools
 
 
 @pytest.fixture
@@ -20,8 +20,8 @@ def hermes(tmp_path, monkeypatch):
     def save_config(c, preserve_keys=None, merge_existing=False, **kw):
         writes.append(copy.deepcopy(c))
         if merge_existing:
-            s = c["plugins"]["entries"]["hermes-spark"]["settings"]
-            cfg["plugins"]["entries"].setdefault("hermes-spark", {"settings": {}})["settings"].update(s)
+            s = c["plugins"]["entries"]["local-fleet"]["settings"]
+            cfg["plugins"]["entries"].setdefault("local-fleet", {"settings": {}})["settings"].update(s)
         else:
             cfg.clear()
             cfg.update(copy.deepcopy(c))
@@ -124,10 +124,10 @@ def test_slash_and_tools_return_text_and_json(hermes):
     assert slash.handle("mode nonsense").startswith("unknown mode")
     assert "freest local: gx10" in slash.handle("use freest")
     assert slash.handle("use nope").startswith("✗")
-    out = json.loads(tools.spark_status({}))
+    out = json.loads(tools.fleet_status({}))
     assert out["ok"] and out["would_route_to"]["node_name"] == "gx10"
-    assert all("api_key_env" not in n for n in json.loads(tools.spark_list_nodes({}))["nodes"])
-    assert not json.loads(tools.spark_pull_model({"node": "gx10", "model": "bad tag; rm -rf"}))["ok"]
+    assert all("api_key_env" not in n for n in json.loads(tools.fleet_list_nodes({}))["nodes"])
+    assert not json.loads(tools.fleet_pull_model({"node": "gx10", "model": "bad tag; rm -rf"}))["ok"]
 
 
 def test_tools_hidden_without_nodes(tmp_path, monkeypatch):
@@ -145,7 +145,7 @@ def test_cli_parses_every_subcommand():
     for argv in (["add", "--name", "a", "--url", "http://h:1/v1", "--label", "lan"], ["rm", "a"], ["list", "--json"],
                  ["status"], ["doctor"], ["watch", "--interval", "5", "--once"], ["use", "a"], ["use", "--freest"],
                  ["mode", "auto"], ["cloud", "openrouter", "x/y"], ["model", ""], ["endpoint"], ["restore"], ["setup"]):
-        assert p.parse_args(argv).spark_command == argv[0]
+        assert p.parse_args(argv).fleet_command == argv[0]
     with pytest.raises(SystemExit):
         p.parse_args(["mode", "fastest"])
 

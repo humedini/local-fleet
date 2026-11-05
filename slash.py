@@ -1,4 +1,4 @@
-"""`/spark` in a session. Returns text; runs in the gateway process, so nothing is printed."""
+"""`/fleet` in a session. Returns text; runs in the gateway process, so nothing is printed."""
 from __future__ import annotations
 
 from . import doctor, engine, store
@@ -6,7 +6,7 @@ from .constants import MODES
 from .fleet import FleetError
 from .render import decision_text, nodes_table, status_text
 
-HELP = ("/spark [status|list|mode [prefer-local|prefer-cloud|auto]|use <node|freest>|doctor]\n"
+HELP = ("/fleet [status|list|mode [prefer-local|prefer-cloud|auto]|use <node|freest>|doctor]\n"
         "Routing changes apply from the next message.")
 
 

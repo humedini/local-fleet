@@ -1,7 +1,7 @@
 [project]
-name = "hermes-spark"
+name = "local-fleet"
 version = "0.1.0"
-description = "Multi-Spark / Ollama-compatible fleet routing for Hermes Agent"
+description = "Health-aware routing for Hermes across your own inference boxes, with cloud failover"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

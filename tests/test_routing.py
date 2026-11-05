@@ -1,6 +1,6 @@
 import pytest
 
-from hermes_spark.routing import decide, model_for
+from local_fleet.routing import decide, model_for
 
 GX = {"id": "a", "name": "gx10", "base_url": "http://gx:11434/v1", "kind": "ollama", "labels": []}
 S2 = {"id": "b", "name": "spark2", "base_url": "http://s2:11434/v1", "kind": "ollama", "labels": []}

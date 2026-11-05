@@ -1,4 +1,4 @@
-"""`hermes spark doctor`: end-to-end readiness, as (ok, lines)."""
+"""`hermes fleet doctor`: end-to-end readiness, as (ok, lines)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +10,7 @@ from .render import target_text
 
 
 def run() -> tuple[bool, list[str]]:
-    lines, ok = ["hermes-spark doctor"], True
+    lines, ok = ["local-fleet doctor"], True
 
     def bad(msg):
         nonlocal ok
@@ -20,7 +20,7 @@ def run() -> tuple[bool, list[str]]:
     settings, f, results = probe()
     lines.append(f"  nodes: {len(f.enabled())} enabled / {len(f.nodes)} total")
     if not f.nodes:
-        bad("no nodes: hermes spark add --name <n> --url http://<host>:11434/v1 --kind ollama")
+        bad("no nodes: hermes fleet add --name <n> --url http://<host>:11434/v1 --kind ollama")
     want = settings.get("default_model") or ""
     for n in f.enabled():
         h = results.get(n["id"], {})
@@ -45,7 +45,7 @@ def run() -> tuple[bool, list[str]]:
     where = f" {primary['base_url']}" if primary.get("base_url") else ""
     lines.append(f"  primary: {primary.get('provider', '?')}{where} model={primary.get('default', '?')}")
     applied = store.load_state().get("applied")
-    lines.append(f"  routed by spark: {target_text(applied) if applied else 'not yet (hermes spark use --freest)'}")
+    lines.append(f"  routed by local-fleet: {target_text(applied) if applied else 'not yet (hermes fleet use --freest)'}")
 
     cp, cm = settings.get("cloud_provider"), settings.get("cloud_model")
     chain = config_write.fallback_chain()
@@ -53,7 +53,7 @@ def run() -> tuple[bool, list[str]]:
         mark = "✓" if config_write.has_fallback(chain, cp, cm) else "missing (added on the next apply)"
         lines.append(f"  fallback_providers: {cp}/{cm} {mark}")
     else:
-        bad("no cloud target: set one with hermes spark setup (prefer-cloud needs it, and the "
+        bad("no cloud target: set one with hermes fleet setup (prefer-cloud needs it, and the "
             "other modes use it when every local is down)")
 
     desktop = Path(__file__).parent / "desktop" / "plugin.js"

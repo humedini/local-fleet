@@ -1,4 +1,4 @@
-"""Probe -> decide -> apply, shared by the CLI, `/spark`, the tools and the Desktop backend."""
+"""Probe -> decide -> apply, shared by the CLI, `/fleet`, the tools and the Desktop backend."""
 from __future__ import annotations
 
 import threading
@@ -41,7 +41,7 @@ def _cloud_ready(target: dict) -> bool:
 def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = False) -> dict:
     """Probe, decide and, unless dry_run, write the primary when it changed.
 
-    `pin` is a node id/name to use now and keep while it stays healthy (`hermes spark use gx10`);
+    `pin` is a node id/name to use now and keep while it stays healthy (`hermes fleet use gx10`);
     `unpin` drops any pin first (`use --freest`, a mode change).
     """
     with _lock:
@@ -62,7 +62,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
             decision["warning"] = f"{pin} is not healthy; routed by policy instead"
         if target["kind"] == "cloud" and not _cloud_ready(target):
             decision["applied"] = False
-            decision["warning"] = ("no cloud target set (hermes spark setup, or "
+            decision["warning"] = ("no cloud target set (hermes fleet setup, or "
                                    "settings cloud_provider + cloud_model); primary left as is")
             store.update_state(last_decision=decision)
             return decision
@@ -91,7 +91,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
 
 
 def restore() -> dict | None:
-    """Put back the primary the user had before hermes-spark first changed it."""
+    """Put back the primary the user had before local-fleet first changed it."""
     with _lock:
         state = store.load_state()
         original = state.get("original_model")
@@ -106,7 +106,7 @@ def restore() -> dict | None:
 
 
 def snapshot() -> dict:
-    """Everything the chip, `/spark` and `spark_status` show, from stored state (no probing)."""
+    """Everything the chip, `/fleet` and `fleet_status` show, from stored state (no probing)."""
     settings = store.read_settings()
     f = store.fleet()
     state = store.load_state()

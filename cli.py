@@ -1,4 +1,4 @@
-"""`hermes spark …`: argparse setup and handlers."""
+"""`hermes fleet …`: argparse setup and handlers."""
 from __future__ import annotations
 
 import argparse
@@ -13,7 +13,7 @@ from .render import decision_text, nodes_table, status_text, target_text
 
 
 def setup_argparse(parser: argparse.ArgumentParser) -> None:
-    sub = parser.add_subparsers(dest="spark_command", metavar="<command>")
+    sub = parser.add_subparsers(dest="fleet_command", metavar="<command>")
 
     sub.add_parser("setup", help="Guided first run: add a node, pick a mode and a cloud backup")
     p = sub.add_parser("add", help="Register a node")
@@ -45,7 +45,7 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("model", help="Show or set the model id to run on local nodes ('' = pick per node)")
     p.add_argument("model", nargs="?")
     sub.add_parser("endpoint", help="Show the primary endpoint Hermes is using")
-    sub.add_parser("restore", help="Put back the primary you had before hermes-spark")
+    sub.add_parser("restore", help="Put back the primary you had before local-fleet")
     parser.set_defaults(func=main)
 
 
@@ -61,7 +61,7 @@ def _apply_and_report(**kw) -> int:
 
 def _setup() -> int:
     if not sys.stdin.isatty():
-        print("setup is interactive; use `hermes spark add`, `mode` and `cloud` in scripts")
+        print("setup is interactive; use `hermes fleet add`, `mode` and `cloud` in scripts")
         return 2
     f = store.fleet()
     if not f.nodes:
@@ -130,7 +130,7 @@ def _show_or_set(key: str, value, label: str) -> int:
 
 
 def main(args) -> int:
-    cmd = getattr(args, "spark_command", None) or "status"
+    cmd = getattr(args, "fleet_command", None) or "status"
     try:
         code = _dispatch(cmd, args)
     except FleetError as e:
@@ -147,7 +147,7 @@ def _dispatch(cmd: str, args) -> int:
     if cmd == "add":
         node = store.fleet().add(args.name, args.url, args.kind, args.label, args.api_key_env,
                                  capacity_gb=args.capacity_gb)
-        print(f"added {node['name']} ({node['id']}) {node['base_url']} — probe with: hermes spark status")
+        print(f"added {node['name']} ({node['id']}) {node['base_url']} — probe with: hermes fleet status")
         return 0
     if cmd in ("rm", "enable", "disable"):
         f = store.fleet()
@@ -166,7 +166,7 @@ def _dispatch(cmd: str, args) -> int:
         else:
             text = status_text(store.fleet().nodes, d, _active_id())
             if d["changed"]:
-                text += "\n(status changes nothing: `hermes spark use --freest` applies this route)"
+                text += "\n(status changes nothing: `hermes fleet use --freest` applies this route)"
             print(text.replace("applied: already the primary", "already the primary"))
         return 0
     if cmd == "doctor":
@@ -189,7 +189,7 @@ def _dispatch(cmd: str, args) -> int:
             print(f"cloud: {s['cloud_provider'] or '?'}/{s['cloud_model'] or '?'}")
             return 0
         if not args.model:
-            print("✗ give both: hermes spark cloud <provider> <model>")
+            print("✗ give both: hermes fleet cloud <provider> <model>")
             return 1
         store.write_setting("cloud_provider", args.provider)
         store.write_setting("cloud_model", args.model)
@@ -204,7 +204,7 @@ def _dispatch(cmd: str, args) -> int:
         applied = store.load_state().get("applied")
         print(f"primary: {p.get('provider', '?')} model={p.get('default', '?')}"
               f"{' base_url=' + p['base_url'] if p.get('base_url') else ''}")
-        print(f"routed by spark: {target_text(applied) if applied else 'no'}")
+        print(f"routed by local-fleet: {target_text(applied) if applied else 'no'}")
         return 0
     if cmd == "restore":
         original = engine.restore()

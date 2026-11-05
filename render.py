@@ -1,4 +1,4 @@
-"""Plain-text views shared by the CLI and `/spark` (they return text; nothing here prints)."""
+"""Plain-text views shared by the CLI and `/fleet` (they return text; nothing here prints)."""
 from __future__ import annotations
 
 
@@ -24,7 +24,7 @@ def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
 
 def nodes_table(nodes: list[dict], active_id: str = "", freest_id: str = "") -> str:
     if not nodes:
-        return "No nodes yet. Add one: hermes spark add --name gx10 --url http://192.168.1.50:11434/v1 --kind ollama"
+        return "No nodes yet. Add one: hermes fleet add --name gx10 --url http://192.168.1.50:11434/v1 --kind ollama"
     head = f"  {'name':<12} {'status':<9} {'health':<22} {'kind':<17} url"
     return "\n".join([head] + [node_line(n, active_id, freest_id) for n in nodes])
 

@@ -1,7 +1,7 @@
-// hermes-spark Desktop half: status-bar chip + fleet panel, palette entries, opt-in DGX Spark theme.
-// Talks only to this plugin's own REST namespace (/api/plugins/hermes-spark/*, dashboard/plugin_api.py).
+// local-fleet Desktop half: status-bar chip + fleet panel, palette entries, opt-in DGX Spark theme.
+// Talks only to this plugin's own REST namespace (/api/plugins/local-fleet/*, dashboard/plugin_api.py).
 // Loaded uncompiled: jsx()/jsxs() calls, no JSX syntax. Styling is theme tokens; Spark green only
-// marks Spark-owned state (routed locally, load meters).
+// marks fleet-owned state (routed locally, load meters).
 import {
   Button, host, haptic, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, requestTheme, ROUTES_AREA,
   SIDEBAR_NAV_AREA, STATUSBAR_AREAS, THEMES_AREA, useQuery, useQueryClient
@@ -9,11 +9,11 @@ import {
 import { useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
-const ID = 'hermes-spark'
+const ID = 'local-fleet'
 const SPARK_GREEN = '#76b900'
 const MODES = [['prefer-local', 'Local'], ['auto', 'Auto'], ['prefer-cloud', 'Cloud']]
 const KEY = [ID, 'status']
-const PAGE_PATH = '/spark-fleet'
+const PAGE_PATH = '/local-fleet'
 
 const CSS = `
 .hs-chip{display:inline-flex;align-items:center;gap:6px}
@@ -114,18 +114,18 @@ function routeLine(s) {
   if (a.kind === 'local') return ['Routed to ', a.node_name, ` · ${a.model || ''}`]
   if (a.kind === 'cloud') return ['Routed to cloud ', `${a.provider}/${a.model}`, a.via === 'failover' ? ' · failover' : '']
   const p = s.primary || {}
-  return ['Not routed by Spark · Hermes uses ', p.provider || 'its own primary', p.default ? ` · ${p.default}` : '']
+  return ['Not routed by Local Fleet · Hermes uses ', p.provider || 'its own primary', p.default ? ` · ${p.default}` : '']
 }
 
 function chip(s, failed) {
-  if (failed) return { tone: 'bad', text: 'spark · unreachable' }
-  if (!s) return { tone: '', text: 'spark' }
-  if (!s.nodes || !s.nodes.length) return { tone: '', text: 'spark · no boxes' }
+  if (failed) return { tone: 'bad', text: 'fleet · unreachable' }
+  if (!s) return { tone: '', text: 'fleet' }
+  if (!s.nodes || !s.nodes.length) return { tone: '', text: 'fleet · no boxes' }
   const a = s.applied || {}
-  if (s.down) return { tone: 'bad', text: 'spark · all down' }
-  if (a.kind === 'local') return { tone: 'spark', text: `spark · ${a.node_name}` }
-  if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'spark · cloud' }
-  return { tone: '', text: `spark · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
+  if (s.down) return { tone: 'bad', text: 'fleet · all down' }
+  if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${a.node_name}` }
+  if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'fleet · cloud' }
+  return { tone: '', text: `fleet · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
 }
 
 function NodeRow({ node, active, freest, want }) {
@@ -169,10 +169,10 @@ function Panel({ ctx, status }) {
       const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
       qc.setQueryData(KEY, next)
       const d = next.decision || {}
-      host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Spark fleet',
+      host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Local Fleet',
         message: d.warning || d.reason || 'done', detail: d.applied ? 'Applies from the next message.' : undefined })
     } catch (err) {
-      host.notifyError(err, 'Spark fleet request failed')
+      host.notifyError(err, 'Local Fleet request failed')
     } finally {
       setBusy('')
     }
@@ -183,13 +183,13 @@ function Panel({ ctx, status }) {
   const [lead, strong, tail] = routeLine(s)
   return jsxs('div', { className: 'hs-panel', children: [
     jsxs('div', { className: 'hs-head', children: [
-      jsx('span', { className: 'hs-title', children: 'Spark fleet' }),
+      jsx('span', { className: 'hs-title', children: 'Local Fleet' }),
       jsx('span', { className: 'hs-mode-tag', children: (s.nodes || []).length ? `${s.healthy ?? 0}/${s.nodes.filter(n => n.enabled !== false).length} boxes up` : '' })
     ] }),
     jsxs('div', { className: 'hs-route', title: `${lead}${strong}${tail}`, children: [lead, jsx('b', { children: strong }), tail] }),
     jsx('div', { className: 'hs-list', children: (s.nodes || []).length
       ? s.nodes.map(n => jsx(NodeRow, { node: n, active: n.id === activeId, freest: n.id === freestId, want: s.local_model }, n.id))
-      : jsx('div', { className: 'hs-error', children: 'No boxes yet. In a terminal: hermes spark add --name gx10 --url http://<host>:11434/v1' }) }),
+      : jsx('div', { className: 'hs-error', children: 'No boxes yet. In a terminal: hermes fleet add --name gx10 --url http://<host>:11434/v1' }) }),
     jsxs('div', { className: 'hs-controls', children: [
       jsx('div', { className: 'hs-seg', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(([m, label]) =>
         jsx('button', { key: m, type: 'button', role: 'radio', 'aria-checked': s.mode === m, disabled: Boolean(busy), title: m,
@@ -211,9 +211,9 @@ function Panel({ ctx, status }) {
 
 function Unreachable({ error, onRetry }) {
   return jsxs('div', { className: 'hs-panel', children: [
-    jsx('div', { className: 'hs-head', children: jsx('span', { className: 'hs-title', children: 'Spark fleet' }) }),
+    jsx('div', { className: 'hs-head', children: jsx('span', { className: 'hs-title', children: 'Local Fleet' }) }),
     jsxs('div', { className: 'hs-error', children: [
-      'The hermes-spark backend did not answer. Enable the plugin on the Hermes this app is connected to and restart its dashboard.',
+      'The local-fleet backend did not answer. Enable the plugin on the Hermes this app is connected to and restart its dashboard.',
       jsx('code', { children: String((error && error.message) || error || 'unknown error') })
     ] }),
     jsx('div', { className: 'hs-controls', children: jsx(Button, { size: 'sm', onClick: onRetry, children: 'Retry' }) })
@@ -227,17 +227,17 @@ function Chip({ ctx }) {
   const c = chip(q.data, failed)
   return jsxs(Popover, { open, onOpenChange: setOpen, children: [
     jsx(PopoverTrigger, { asChild: true, children: jsx(Button, {
-      variant: 'ghost', size: 'micro', 'aria-label': `Spark fleet: ${c.text}`, className: 'text-[0.6875rem]',
+      variant: 'ghost', size: 'micro', 'aria-label': `Local Fleet: ${c.text}`, className: 'text-[0.6875rem]',
       children: jsxs('span', { className: 'hs-chip', children: [jsx('span', { className: 'hs-dot', 'data-tone': c.tone }), c.text] })
     }) }),
-    jsx(PopoverContent, { side: 'top', align: 'end', className: 'hs-pop', 'aria-label': 'Spark fleet', children: failed
+    jsx(PopoverContent, { side: 'top', align: 'end', className: 'hs-pop', 'aria-label': 'Local Fleet', children: failed
       ? jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() })
       : jsx(Panel, { ctx, status: q.data }) })
   ] })
 }
 
 // ---------------------------------------------------------------------------
-// Fleet page (sidebar "Spark fleet"): a hardware map of where Hermes sends its requests.
+// Fleet page (sidebar "Local Fleet"): a hardware map of where Hermes sends its requests.
 // SVG only (the plugin import whitelist allows no WebGL libraries); isometric server boxes.
 
 const W = 960
@@ -349,7 +349,7 @@ function FleetMap({ s }) {
   const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const hubEdge = { x: HUB.x + 46, y: HUB.y }
   const cloudPath = `M${HUB.x} ${HUB.y - 46} C${HUB.x} ${CLOUD.y + 10}, ${CLOUD.x - 140} ${CLOUD.y}, ${CLOUD.x - 46} ${CLOUD.y}`
-  return jsx('div', { className: 'hs-map', children: jsxs('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Spark fleet map', children: [
+  return jsx('div', { className: 'hs-map', children: jsxs('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Local Fleet map', children: [
     jsx('path', { id: 'hs-wire-cloud', className: 'hs-wire', 'data-cloud': true, 'data-live': cloudLive, d: cloudPath }),
     cloudLive && !reduced && Packets({ id: 'hs-wire-cloud', color: 'var(--ui-orange,#df6500)' }),
     ...nodes.map((n, i) => {
@@ -434,10 +434,10 @@ function FleetPage({ ctx }) {
       const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
       qc.setQueryData(KEY, next)
       const d = next.decision || {}
-      host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Spark fleet', message: d.warning || d.reason || 'done',
+      host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Local Fleet', message: d.warning || d.reason || 'done',
         detail: d.applied ? 'Applies from the next message.' : undefined })
     } catch (err) {
-      host.notifyError(err, 'Spark fleet request failed')
+      host.notifyError(err, 'Local Fleet request failed')
     } finally {
       setBusy('')
     }
@@ -450,7 +450,7 @@ function FleetPage({ ctx }) {
   const [lead, strong, tail] = routeLine(s)
   return jsxs('div', { className: 'hs-page', children: [
     jsxs('div', { className: 'hs-page-head', children: [
-      jsxs('h1', { children: [jsx('span', { children: 'Spark' }), ' fleet'] }),
+      jsxs('h1', { children: ['Local ', jsx('span', { children: 'Fleet' })] }),
       jsx('div', { className: 'hs-page-hint', children: `${lead}${strong}${tail}` })
     ] }),
     jsxs('div', { className: 'hs-stats', children: [
@@ -477,7 +477,7 @@ function FleetPage({ ctx }) {
 const dgxSparkTheme = {
   name: 'dgx-spark',
   label: 'DGX Spark',
-  description: 'Black and NVIDIA green, from hermes-spark',
+  description: 'Black and NVIDIA green, from local-fleet',
   colors: {
     background: '#000000', foreground: '#ffffff',
     card: '#111111', cardForeground: '#ffffff', popover: '#111111', popoverForeground: '#ffffff',
@@ -490,8 +490,8 @@ const dgxSparkTheme = {
 
 export default {
   id: ID,
-  name: 'Spark Fleet',
-  description: 'Which Spark / Ollama box Hermes is routed to, its health, and one-click mode / freest switching.',
+  name: 'Local Fleet',
+  description: 'Which of your inference boxes Hermes is routed to, its health, and one-click mode / freest switching.',
   defaultEnabled: true,
   register(ctx) {
     const style = document.createElement('style')
@@ -509,21 +509,21 @@ export default {
     }
     const openPage = () => host.navigate(PAGE_PATH)
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: PAGE_PATH }, render: () => jsx(FleetPage, { ctx }) })
-    ctx.register({ id: 'nav', area: SIDEBAR_NAV_AREA, data: { path: PAGE_PATH, label: 'Spark fleet', codicon: 'server' } })
+    ctx.register({ id: 'nav', area: SIDEBAR_NAV_AREA, data: { path: PAGE_PATH, label: 'Local Fleet', codicon: 'server' } })
     ctx.register({ id: 'palette-open', area: PALETTE_AREA,
-      data: { id: 'spark-open', label: 'Spark: open the fleet map', keywords: ['spark', 'fleet', 'hardware', 'map'], run: openPage } })
+      data: { id: 'fleet-open', label: 'Fleet: open the fleet map', keywords: ['spark', 'fleet', 'hardware', 'map'], run: openPage } })
     ctx.register({ id: 'chip', area: STATUSBAR_AREAS.right, order: 125, render: () => jsx(Chip, { ctx }) })
     ctx.register({ id: 'theme', area: THEMES_AREA, data: dgxSparkTheme })
     ctx.register({ id: 'palette-freest', area: PALETTE_AREA,
-      data: { id: 'spark-use-freest', label: 'Spark: route to the freest box', keywords: ['spark', 'fleet', 'ollama', 'gpu'],
-        run: () => post('/use', { node: 'freest' }, 'Spark: use freest') } })
+      data: { id: 'fleet-use-freest', label: 'Fleet: route to the freest box', keywords: ['spark', 'fleet', 'ollama', 'gpu'],
+        run: () => post('/use', { node: 'freest' }, 'Fleet: use freest') } })
     ctx.register({ id: 'palette-probe', area: PALETTE_AREA,
-      data: { id: 'spark-probe', label: 'Spark: probe the fleet', keywords: ['spark', 'health'],
-        run: () => post('/probe', {}, 'Spark: probe') } })
+      data: { id: 'fleet-probe', label: 'Fleet: probe the fleet', keywords: ['spark', 'health'],
+        run: () => post('/probe', {}, 'Fleet: probe') } })
     for (const [m] of MODES) {
       ctx.register({ id: `palette-mode-${m}`, area: PALETTE_AREA,
-        data: { id: `spark-mode-${m}`, label: `Spark: mode ${m}`, keywords: ['spark', 'mode', 'routing'],
-          run: () => post('/mode', { mode: m }, `Spark: ${m}`) } })
+        data: { id: `fleet-mode-${m}`, label: `Fleet: mode ${m}`, keywords: ['spark', 'mode', 'routing'],
+          run: () => post('/mode', { mode: m }, `Fleet: ${m}`) } })
     }
   }
 }
