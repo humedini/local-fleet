@@ -132,10 +132,10 @@ function Mark({ kind, x = 0, y = 0, size = 16, title }) {
     jsx('rect', { x: 0.5, y: 2.5, width: 15, height: 11, rx: 2.5, fill }),
     jsx('text', { x: 8, y: 10, textAnchor: 'middle', style: { fill: fg, fontSize: fs, fontWeight: 800, fontFamily: 'system-ui,sans-serif', letterSpacing: '-0.02em' }, children: text })])
   switch (kind) {
+    // A heavy, square-cut N drawn as a shape (NVIDIA's own typeface is proprietary), white on green.
     case 'nvidia': return g([
       jsx('rect', { x: 0.5, y: 0.5, width: 15, height: 15, rx: 3, fill: SPARK_GREEN }),
-      jsx('path', { d: 'M3 8.2c2.2-3.3 6.8-3.6 10-.2-3.2 3.4-7.8 3.1-10 .2z', fill: 'none', stroke: '#000', strokeWidth: 1.3 }),
-      jsx('circle', { cx: 8.2, cy: 8.1, r: 1.6, fill: '#000' })])
+      jsx('polygon', { points: '3.6,12.4 3.6,3.6 6.5,3.6 9.6,8.3 9.6,3.6 12.4,3.6 12.4,12.4 9.5,12.4 6.4,7.7 6.4,12.4', fill: '#fff' })])
     case 'apple': return g([
       jsx('path', { d: 'M8 4.6c1.2-.9 3.4-.9 4.4.8 1 1.7.6 4.6-.9 6.6-.7.9-1.4 1.6-2.3 1.4-.6-.1-.8-.4-1.2-.4s-.6.3-1.2.4c-.9.2-1.6-.5-2.3-1.4C3 10 2.6 7.1 3.6 5.4c1-1.7 3.2-1.7 4.4-.8z', fill: 'var(--ui-text-primary)' }),
       jsx('path', { d: 'M8.4 4c0-1.3.9-2.3 2.1-2.5.1 1.3-.8 2.4-2.1 2.5z', fill: 'var(--ui-text-primary)' })])
