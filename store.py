@@ -61,6 +61,20 @@ def read_settings() -> dict:
     return out
 
 
+def set_delegation_backend(name: str) -> None:
+    """Point `delegation.backend` at `name` (applies from each session's next session)."""
+    if _ctx is not None and getattr(_ctx, "delegation_backends", None) is not None:
+        _ctx.delegation_backends.set_global_backend(name)
+        return
+    from hermes_cli.config import save_config
+    save_config({"delegation": {"backend": name}}, preserve_keys={("delegation", "backend")}, merge_existing=True)
+
+
+def delegation_backend() -> str:
+    from hermes_cli.config import load_config_readonly
+    return str(((load_config_readonly() or {}).get("delegation") or {}).get("backend") or "default")
+
+
 def write_setting(key: str, value) -> None:
     if key not in DEFAULTS:
         raise KeyError(key)

@@ -50,6 +50,7 @@ def boxes(gx=True, s2=True, gx_load=(), s2_load=("gemma",)):
         if up:
             respx.get(f"http://{host}:11434/v1/models").respond(json={"data": [{"id": "qwen"}, {"id": "gemma"}]})
             respx.get(f"http://{host}:11434/api/ps").respond(json={"models": [{"name": m} for m in loaded]})
+            respx.post(f"http://{host}:11434/api/generate").respond(json={"done": True})
         else:
             respx.get(f"http://{host}:11434/v1/models").respond(status_code=502)
 

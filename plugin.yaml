@@ -16,6 +16,9 @@ provides_tools:
 
 provides_hooks:
   - on_session_start
+  - post_api_request
+  - api_request_error
+  - post_auxiliary_call
 
 python_dependencies:
   - "httpx>=0.27,<1"
@@ -26,6 +29,11 @@ config_keys:
   - model.base_url
   - model.api_mode
   - model.key_env
+  - delegation.backend
+  - auxiliary.title_generation
+  - auxiliary.compression
+  - auxiliary.vision
+  - auxiliary.approval
 
 config_schema:
   mode:
@@ -66,6 +74,36 @@ config_schema:
     default: 0.25
     label: Switch margin
     description: How much freer (0..1 load) another box must be before a healthy active box is swapped out
+  bench_interval_s:
+    type: float
+    default: 900.0
+    label: Bench interval (s)
+    description: How often watch / session start / the Desktop re-measure tokens/sec per box; 0 = only on request
+  warm_before_switch:
+    type: bool
+    default: true
+    label: Load the model before switching to a box
+  warm_timeout_s:
+    type: float
+    default: 120.0
+    label: Warm-up timeout (s)
+  aux_tasks:
+    type: list
+    default: []
+    label: Side tasks on the fleet
+    description: Auxiliary tasks run on the freest box, e.g. ["title_generation", "compression"]; set with hermes fleet aux on
+  price_in_per_m:
+    type: float
+    default: 0.0
+    label: Cloud input price per million tokens
+  price_out_per_m:
+    type: float
+    default: 0.0
+    label: Cloud output price per million tokens
+  currency:
+    type: str
+    default: "$"
+    label: Currency symbol for spend avoided
   prefer_labels:
     type: list
     default: []

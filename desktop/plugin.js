@@ -3,7 +3,7 @@
 // Loaded uncompiled: jsx()/jsxs() calls, no JSX syntax. Styling is theme tokens; Spark green only
 // marks fleet-owned state (routed locally, load meters).
 import {
-  Button, host, haptic, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, requestTheme, ROUTES_AREA,
+  Button, COMPOSER_AREAS, host, haptic, MODEL_MENU_ROW_AREA, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, requestTheme, ROUTES_AREA,
   SIDEBAR_NAV_AREA, STATUSBAR_AREAS, THEMES_AREA, useQuery, useQueryClient
 } from '@hermes/plugin-sdk'
 import { useState } from 'react'
@@ -14,6 +14,8 @@ const SPARK_GREEN = '#76b900'
 const MODES = [['prefer-local', 'Local'], ['auto', 'Auto'], ['prefer-cloud', 'Cloud']]
 const KEY = [ID, 'status']
 const PAGE_PATH = '/local-fleet'
+// Last status seen by any view, for the model menu and pill (their decorators must be pure lookups).
+let LAST = null
 
 const CSS = `
 .hs-chip{display:inline-flex;align-items:center;gap:6px}
@@ -65,7 +67,7 @@ const CSS = `
 .hs-page-head h1{font-size:22px;font-weight:600;margin:0}
 .hs-page-head h1 span{color:${SPARK_GREEN}}
 .hs-page-hint{font-size:12px;color:var(--ui-text-tertiary)}
-.hs-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.hs-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
 .hs-stat{border:1px solid var(--ui-stroke-tertiary);border-radius:8px;padding:10px 14px;min-width:0}
 .hs-stat b{display:block;font-size:20px;font-weight:600;line-height:26px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-stat span{font-size:12px;color:var(--ui-text-tertiary)}
@@ -79,7 +81,14 @@ const CSS = `
 .hs-wire{fill:none;stroke:var(--ui-stroke-secondary);stroke-width:1.2}
 .hs-wire[data-off=true]{stroke-dasharray:3 5;opacity:.5}
 .hs-wire[data-live=true]{stroke:${SPARK_GREEN};stroke-width:2.2;stroke-dasharray:8 6;animation:hs-flow 0.9s linear infinite}
+.hs-wire[data-traffic=true]{stroke:color-mix(in srgb,${SPARK_GREEN} 70%,#6ee7ff);stroke-width:1.8;stroke-dasharray:3 5;animation:hs-flow 0.6s linear infinite}
 .hs-wire[data-cloud=true]{stroke-dasharray:5 6}
+.hs-toggle{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ui-text-secondary);padding:3px 4px}
+.hs-toggle i{width:26px;height:14px;border-radius:999px;background:var(--ui-stroke-secondary);position:relative;transition:background .15s}
+.hs-toggle i::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:999px;background:var(--ui-text-primary);transition:transform .15s}
+.hs-toggle[aria-checked=true]{color:var(--ui-text-primary)}
+.hs-toggle[aria-checked=true] i{background:${SPARK_GREEN}}
+.hs-toggle[aria-checked=true] i::after{transform:translateX(12px);background:#000}
 .hs-wire[data-cloud=true][data-live=true]{stroke:var(--ui-orange,#df6500)}
 @keyframes hs-flow{to{stroke-dashoffset:-28}}
 .hs-led{animation:hs-blink 1.8s ease-in-out infinite}
@@ -226,11 +235,11 @@ function Panel({ ctx, status }) {
   const run = async (label, path, body) => {
     setBusy(label)
     try {
-      const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
+      const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 150000 })
       qc.setQueryData(KEY, next)
       const d = next.decision || {}
       host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Local Fleet',
-        message: d.warning || d.reason || 'done', detail: d.applied ? 'Applies from the next message.' : undefined })
+        message: d.warning || d.reason || 'done', detail: d.applied ? `${d.warm && d.warm.warmed ? d.warm.detail + ' first. ' : ''}Applies from the next message.` : undefined })
     } catch (err) {
       host.notifyError(err, 'Local Fleet request failed')
     } finally {
@@ -283,6 +292,7 @@ function Unreachable({ error, onRetry }) {
 function Chip({ ctx }) {
   const [open, setOpen] = useState(false)
   const q = useQuery({ queryKey: KEY, queryFn: () => ctx.rest('/status'), refetchInterval: 15000, retry: 1, staleTime: 5000 })
+  if (q.data) LAST = q.data
   const failed = q.isError && !q.data
   const c = chip(q.data, failed)
   return jsxs(Popover, { open, onOpenChange: setOpen, children: [
@@ -401,6 +411,18 @@ function Packets({ id, color }) {
     jsx('animateMotion', { dur: '1.8s', begin: `${delay}s`, repeatCount: 'indefinite', children: jsx('mpath', { href: `#${id}` }) }) }, delay))
 }
 
+function liveCalls(s, n) {
+  return (((s.traffic || {}).boxes || {})[n.id] || {}).live || 0
+}
+
+function recentDelegation(s, n) {
+  return (s.delegations || []).some(d => d.label === n.name && Date.now() - Date.parse(d.at) < 120000)
+}
+
+function money(s, v) {
+  return `${s.currency || '$'}${v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(2)}`
+}
+
 function FleetMap({ s }) {
   const nodes = s.nodes || []
   const pos = nodePositions(nodes.length)
@@ -417,9 +439,10 @@ function FleetMap({ s }) {
       const tone = skipped(n, s) ? 'off' : nodeTone(n)
       const end = { x: pos[i].x - 50, y: pos[i].y + 4 }
       const id = `hs-wire-${n.id}`
+      const busy = !active && liveCalls(s, n) > 0
       return jsxs('g', { children: [
-        jsx('path', { id, className: 'hs-wire', 'data-live': active, 'data-off': tone === 'off' || tone === 'bad', d: wirePath(hubEdge, end) }),
-        active && !reduced && Packets({ id, color: SPARK_GREEN })
+        jsx('path', { id, className: 'hs-wire', 'data-live': active, 'data-traffic': busy, 'data-off': !busy && (tone === 'off' || tone === 'bad'), d: wirePath(hubEdge, end) }),
+        (active || busy) && !reduced && Packets({ id, color: active ? SPARK_GREEN : '#6ee7ff' })
       ] }, `w-${n.id}`)
     }),
     jsx(Hub, { s }),
@@ -440,7 +463,8 @@ function FleetMap({ s }) {
         ...marksFor(n).map(([k, t], j) => jsx(Mark, { kind: k, title: t, x: x + 70 + j * 19, y: y - 31, size: 16 }, k)),
         jsx('text', { x: x + 72 + marksFor(n).length * 19, y: y - 18, style: { fontWeight: 600 }, children: n.name + (active ? '  ← routed' : '') }),
         jsx('text', { className: 't2', x: x + 70, y: y - 3, children: line2 }),
-        resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 34 ? resident.slice(0, 33) + '…' : resident}` })
+        resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 34 ? resident.slice(0, 33) + '…' : resident}` }),
+        liveCalls(s, n) > 0 && jsx('text', { className: 't2', x: x + 70, y: y + 25, style: { fill: '#6ee7ff' }, children: `● live · ${liveCalls(s, n)} call${liveCalls(s, n) === 1 ? '' : 's'}${recentDelegation(s, n) ? ' · subagents' : ''}` })
       ] }, n.id)
     })
   ] }) })
@@ -476,6 +500,10 @@ function NodeCard({ n, s }) {
       jsx('span', { children: (n.perf || {}).tps ? ` tok/s · ${(n.perf || {}).model}${(n.perf || {}).prompt_tps ? ` · prompt ${(n.perf || {}).prompt_tps} tok/s` : ''} · ${ago((n.perf || {}).at)}`
         : ` tok/s · ${((n.perf_note || {}).skipped) || 'not benched yet'}` })
     ] }),
+    (() => {
+      const t = ((s.traffic || {}).boxes || {})[n.id]
+      return t ? jsx('div', { className: 'hs-card-perf', children: `real traffic: ${t.calls} calls this week${t.tps ? ` · ${t.tps} tok/s effective` : ''}${t.latency_s ? ` · ${t.latency_s}s median` : ''}${t.errors ? ` · ${t.errors} errors` : ''}` }) : null
+    })(),
     jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
     jsx(Sparkline, { points: (s.series || {})[n.id] }),
     jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', { 'data-want': m === want, title: m, children: m }, m)) })
@@ -498,7 +526,7 @@ function FleetPage({ ctx }) {
   const run = async (label, path, body) => {
     setBusy(label)
     try {
-      const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
+      const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 150000 })
       qc.setQueryData(KEY, next)
       const d = next.decision || {}
       host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Local Fleet', message: d.warning || d.reason || 'done',
@@ -509,6 +537,7 @@ function FleetPage({ ctx }) {
       setBusy('')
     }
   }
+  if (q.data) LAST = q.data
   if (q.isError && !q.data) return jsx('div', { className: 'hs-page', children: jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() }) })
   const s = q.data || {}
   const nodes = s.nodes || []
@@ -524,7 +553,11 @@ function FleetPage({ ctx }) {
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: nodes.length }), jsx('span', { children: 'Boxes' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: `${s.healthy ?? '…'}/${enabled.length}` }), jsx('span', { children: 'Healthy' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { style: a.kind === 'local' ? { color: SPARK_GREEN } : undefined, children: a.kind === 'local' ? a.node_name : a.kind === 'cloud' ? 'cloud' : '—' }), jsx('span', { children: 'Routed to' })] }),
-      jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] })
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] }),
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: (s.traffic || {}).local_share != null ? `${Math.round(s.traffic.local_share * 100)}%` : '—' }), jsx('span', { children: 'Tokens run locally (7 d)' })] }),
+      jsxs('div', { className: 'hs-stat', title: (s.traffic || {}).saved == null ? 'Set a cloud price: hermes fleet price <in> <out> --currency £' : 'Local tokens at your cloud price', children: [
+        jsx('b', { style: (s.traffic || {}).saved ? { color: SPARK_GREEN } : undefined, children: (s.traffic || {}).saved != null ? money(s, s.traffic.saved) : '—' }),
+        jsx('span', { children: 'Cloud spend avoided (7 d)' })] })
     ] }),
     jsxs('div', { className: 'hs-toolbar', children: [
       jsx('div', { className: 'hs-seg', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(([m, label]) =>
@@ -534,6 +567,12 @@ function FleetPage({ ctx }) {
       jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), onClick: () => run('probe', '/probe'), children: busy === 'probe' ? 'Probing…' : 'Probe now' }),
       jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), title: 'Short generation on each box that has a model in memory',
         onClick: () => run('bench', '/bench'), children: busy === 'bench' ? 'Benchmarking…' : 'Benchmark' }),
+      jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': s.delegation_backend === 'fleet', disabled: Boolean(busy),
+        title: 'delegate_task subagents run on the fleet, spread across boxes (from the next session)',
+        onClick: () => run('delegate', '/delegate', { on: s.delegation_backend !== 'fleet' }), children: [jsx('i', {}), 'Subagents on fleet'] }),
+      jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': Boolean(s.aux), disabled: Boolean(busy),
+        title: s.aux ? `${s.aux.tasks.join(', ')} → ${s.aux.node_name}` : 'Titles and compression on the freest box, cloud as fallback',
+        onClick: () => run('aux', '/aux', { on: !s.aux }), children: [jsx('i', {}), 'Side tasks on fleet'] }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
     jsx(FleetMap, { s }),
@@ -569,7 +608,7 @@ export default {
     ctx.onDispose(() => style.remove())
     const post = async (path, body, label) => {
       try {
-        const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
+        const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 150000 })
         const d = next.decision || {}
         host.notify({ kind: d.warning ? 'warning' : 'info', title: label, message: d.warning || d.reason || 'done' })
       } catch (err) {
@@ -582,6 +621,21 @@ export default {
     ctx.register({ id: 'palette-open', area: PALETTE_AREA,
       data: { id: 'fleet-open', label: 'Fleet: open the fleet map', keywords: ['spark', 'fleet', 'hardware', 'map'], run: openPage } })
     ctx.register({ id: 'chip', area: STATUSBAR_AREAS.right, order: 125, render: () => jsx(Chip, { ctx }) })
+    // Model menu: which box serves each model, with its platform mark and speed.
+    ctx.register({ id: 'model-rows', area: MODEL_MENU_ROW_AREA, data: { decorate: ({ model }) => {
+      const nodes = ((LAST || {}).nodes || []).filter(n => n.enabled !== false && ((n.last_health || {}).models || n.models || []).includes(model))
+      if (!nodes.length) return null
+      const best = nodes.slice().sort((x, y) => ((y.perf || {}).tps || 0) - ((x.perf || {}).tps || 0))[0]
+      const mark = marksFor(best)[0]
+      const sp = (best.perf || {}).model === model ? speed(best) : ''
+      return { icon: mark ? jsx('svg', { width: 16, height: 16, viewBox: '0 0 16 16', children: jsx(Mark, { kind: mark[0], title: mark[1] }) }) : undefined,
+        badge: nodes.length > 1 ? `${nodes.length} boxes${sp ? ` · ${best.name} ${sp}` : ''}` : `${best.name}${sp ? ` · ${sp}` : ''}` }
+    } } })
+    // Model pill: name the box when Hermes is routed to one by the fleet.
+    ctx.register({ id: 'model-pill', area: COMPOSER_AREAS.modelPill, data: { label: ({ model }) => {
+      const a = (LAST || {}).applied || {}
+      return a.kind === 'local' && a.model && model && (model === a.model || model.endsWith(a.model)) ? `${model} @ ${a.node_name}` : null
+    } } })
     ctx.register({ id: 'theme', area: THEMES_AREA, data: dgxSparkTheme })
     ctx.register({ id: 'palette-freest', area: PALETTE_AREA,
       data: { id: 'fleet-use-freest', label: 'Fleet: route to the freest box', keywords: ['spark', 'fleet', 'ollama', 'gpu'],

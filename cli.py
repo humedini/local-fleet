@@ -7,6 +7,7 @@ import sys
 import time
 
 from . import config_write, doctor, engine, store
+from .aux import DEFAULT_TASKS as AUX_DEFAULT, TASKS as AUX_TASKS
 from .constants import KINDS, MODES, OSES, VENDORS
 from .fleet import FleetError, public_node
 from .render import decision_text, nodes_table, status_text, target_text
@@ -55,6 +56,16 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--os", dest="os_name", choices=OSES)
     p.add_argument("--label", action="append", help="Replaces the labels; repeatable")
     p.add_argument("--capacity-gb", type=float)
+    sub.add_parser("stats", help="Real traffic per box this week: calls, tok/s, latency, local share, spend avoided")
+    p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
+    p.add_argument("input", type=float)
+    p.add_argument("output", type=float)
+    p.add_argument("--currency", default=None)
+    p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the freest box")
+    p.add_argument("action", choices=("on", "off", "status"))
+    p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
+    p = sub.add_parser("delegate", help="Run subagents on the fleet (delegation backend 'fleet')")
+    p.add_argument("action", choices=("on", "off", "status"))
     sub.add_parser("endpoint", help="Show the primary endpoint Hermes is using")
     sub.add_parser("restore", help="Put back the primary you had before local-fleet")
     parser.set_defaults(func=main)
@@ -129,6 +140,58 @@ def _watch(args) -> int:
     except KeyboardInterrupt:
         print("\nwatch stopped")
         return 0
+
+
+def stats_text() -> str:
+    from . import traffic
+    s = store.read_settings()
+    t = traffic.summarize(traffic.load(), (float(s["price_in_per_m"] or 0), float(s["price_out_per_m"] or 0)))
+    names = {n["id"]: n["name"] for n in store.fleet().nodes}
+    lines = [f"  {'box':<12} {'calls':>6} {'errors':>6} {'tok/s':>7} {'latency':>8} {'tokens':>9}"]
+    for nid, b in sorted(t["boxes"].items(), key=lambda kv: -kv[1]["calls"]):
+        lines.append(f"  {names.get(nid, nid):<12} {b['calls']:>6} {b['errors']:>6} {b['tps'] or '-':>7} "
+                     f"{(str(b['latency_s']) + 's') if b['latency_s'] else '-':>8} {b['in'] + b['out']:>9}")
+    if not t["boxes"]:
+        lines.append("  no traffic to fleet boxes yet this week")
+    share = f"{t['local_share'] * 100:.0f}%" if t["local_share"] is not None else "-"
+    lines.append(f"\nlocal tokens {t['local_tokens']:,} · cloud tokens {t['cloud_tokens']:,} · local share {share}")
+    if t["saved"] is not None:
+        lines.append(f"spend avoided this week: {s['currency']}{t['saved']:,.2f}")
+    else:
+        lines.append("spend avoided: set a cloud price with hermes fleet price <in> <out> [--currency £]")
+    lines.append("(tok/s here is effective: real calls including prompt processing; hermes fleet bench gives decode speed)")
+    return "\n".join(lines)
+
+
+def _aux(args) -> int:
+    if args.action == "status":
+        st = store.load_state().get("aux_applied")
+        print(f"side tasks: {', '.join(st['tasks'])} → {st['node_name']} · {st['model']}" if st else "side tasks: off")
+        return 0
+    if args.action == "off":
+        tasks = engine.aux_off()
+        print(f"side tasks back on their own settings: {', '.join(tasks)}" if tasks else "side tasks were not on the fleet")
+        return 0
+    tasks = [t.strip() for t in (args.tasks or ",".join(AUX_DEFAULT)).split(",") if t.strip()]
+    bad = [t for t in tasks if t not in AUX_TASKS]
+    if bad:
+        print(f"✗ unknown task(s): {', '.join(bad)}; choose from {', '.join(AUX_TASKS)}")
+        return 1
+    store.write_setting("aux_tasks", tasks)
+    d = engine.apply_policy()
+    print(d.get("aux") or "side tasks: already on the freest box")
+    return 0
+
+
+def _delegate(action: str) -> int:
+    if action == "status":
+        b = store.delegation_backend()
+        print(f"delegation backend: {b}{' (subagents run on the fleet)' if b == 'fleet' else ''}")
+        return 0
+    store.set_delegation_backend("fleet" if action == "on" else "default")
+    print("subagents " + ("run on the fleet" if action == "on" else "back on the default route") +
+          " from each session's next session (/new), or now with /delegation " + ("fleet" if action == "on" else "default") + " --now")
+    return 0
 
 
 def _show_or_set(key: str, value, label: str) -> int:
@@ -228,6 +291,20 @@ def _dispatch(cmd: str, args) -> int:
         p = platform(node)
         print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'} labels={','.join(node['labels']) or '-'}")
         return 0
+    if cmd == "stats":
+        print(stats_text())
+        return 0
+    if cmd == "price":
+        store.write_setting("price_in_per_m", args.input)
+        store.write_setting("price_out_per_m", args.output)
+        if args.currency:
+            store.write_setting("currency", args.currency)
+        print(f"cloud price set: {args.input:g} in / {args.output:g} out per million tokens")
+        return 0
+    if cmd == "aux":
+        return _aux(args)
+    if cmd == "delegate":
+        return _delegate(args.action)
     if cmd == "endpoint":
         p = config_write.current_primary()
         applied = store.load_state().get("applied")

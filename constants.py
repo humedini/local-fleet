@@ -22,6 +22,15 @@ DEFAULTS = {
     "switch_margin": 0.25,
     # Seconds between automatic speed benches per box (watch, session start, Desktop probe); 0 = off.
     "bench_interval_s": 900.0,
+    # Load the model on a box before switching Hermes to it (Ollama), and how long to wait.
+    "warm_before_switch": True,
+    "warm_timeout_s": 120.0,
+    # Auxiliary tasks to run on the freest box (hermes fleet aux on); empty = off.
+    "aux_tasks": [],
+    # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.
+    "price_in_per_m": 0.0,
+    "price_out_per_m": 0.0,
+    "currency": "$",
 }
 
 PROBE_CONCURRENCY = 8

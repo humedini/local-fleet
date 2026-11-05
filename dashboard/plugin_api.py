@@ -64,6 +64,31 @@ async def bench(body: dict | None = None):
     return await asyncio.to_thread(run)
 
 
+@router.post("/delegate")
+async def delegate(body: dict):
+    on = bool(body.get("on"))
+
+    def run():
+        store.set_delegation_backend("fleet" if on else "default")
+        return _view()
+
+    return await asyncio.to_thread(run)
+
+
+@router.post("/aux")
+async def aux_toggle(body: dict):
+    on = bool(body.get("on"))
+
+    def run():
+        if on:
+            store.write_setting("aux_tasks", list(store.read_settings().get("aux_tasks") or []) or ["title_generation", "compression"])
+            return _view(engine.apply_policy())
+        engine.aux_off()
+        return _view()
+
+    return await asyncio.to_thread(run)
+
+
 @router.post("/use")
 async def use(body: dict):
     node = str(body.get("node") or "")

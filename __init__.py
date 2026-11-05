@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from . import cli, schemas, slash, store, tools
+from . import cli, delegation, schemas, slash, store, tools, traffic
 from .constants import TOOLSET
 
 _bg = threading.Lock()
@@ -52,4 +52,11 @@ def register(ctx):
                              description="Fleet registry, health probes, freest-box routing, "
                                          "cloud failover and failback.")
     ctx.register_hook("on_session_start", _refresh_on_session_start)
+    # Real-traffic stats: endpoint, tokens and duration of each call (never its content).
+    ctx.register_hook("post_api_request", traffic.on_post_api_request)
+    ctx.register_hook("api_request_error", traffic.on_api_request_error)
+    ctx.register_hook("post_auxiliary_call", traffic.on_post_auxiliary_call)
+    provider = delegation.make_provider()
+    if provider is not None:
+        ctx.register_delegation_provider(provider)
     ctx.register_skill("local-fleet", Path(__file__).parent / "skills" / "local-fleet" / "SKILL.md")

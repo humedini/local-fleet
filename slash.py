@@ -6,7 +6,7 @@ from .constants import MODES
 from .fleet import FleetError
 from .render import decision_text, nodes_table, status_text
 
-HELP = ("/fleet [status|list|mode [prefer-local|prefer-cloud|auto]|use <node|freest>|doctor]\n"
+HELP = ("/fleet [status|list|stats|mode [prefer-local|prefer-cloud|auto]|use <node|freest>|doctor]\n"
         "Routing changes apply from the next message.")
 
 
@@ -30,6 +30,9 @@ def handle(raw_args: str = "", **kwargs) -> str:
             if rest[0].lstrip("-") == "freest":
                 return decision_text(engine.apply_policy(unpin=True))
             return decision_text(engine.apply_policy(pin=rest[0]))
+        if cmd == "stats":
+            from .cli import stats_text
+            return stats_text()
         if cmd == "doctor":
             return "\n".join(doctor.run()[1])
     except FleetError as e:
