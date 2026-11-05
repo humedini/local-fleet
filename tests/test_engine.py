@@ -148,3 +148,17 @@ def test_cli_parses_every_subcommand():
         assert p.parse_args(argv).spark_command == argv[0]
     with pytest.raises(SystemExit):
         p.parse_args(["mode", "fastest"])
+
+
+@respx.mock
+def test_series_and_history_feed_the_fleet_page(hermes):
+    boxes()
+    engine.apply_policy(dry_run=True)
+    engine.apply_policy()
+    boxes(gx=False, s2=False)
+    engine.apply_policy()
+    snap = engine.snapshot()
+    assert all(len(v) == 3 for v in snap["series"].values())
+    assert [e["kind"] for e in snap["history"]] == ["local", "cloud"]
+    assert snap["history"][-1]["via"] == "failover"
+    assert snap["primary"]["provider"] == "openrouter" and snap["local_model"] == "qwen"

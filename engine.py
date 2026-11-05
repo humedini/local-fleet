@@ -9,6 +9,8 @@ from .health import probe_all
 from .routing import decide, same_target
 
 _lock = threading.Lock()  # one apply at a time within a process (watch + a slash command)
+SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
+HISTORY_LEN = 25  # routing changes kept for the Desktop timeline
 
 
 def probe(settings: dict | None = None):
@@ -18,7 +20,17 @@ def probe(settings: dict | None = None):
     results = probe_all(f.enabled(), timeout=float(settings["probe_timeout_s"]),
                         want=settings.get("default_model") or "")
     f.record_health(results)
-    store.update_state(last_probe_at=now_iso())
+    stamp = now_iso()
+    state = store.load_state()
+    series = state.get("series") or {}
+    for nid, snap in results.items():
+        points = series.get(nid, [])[-(SERIES_LEN - 1):]
+        points.append({"t": stamp, "lat": snap.get("latency_ms"), "load": snap.get("load_proxy"), "st": snap["status"]})
+        series[nid] = points
+    live = {n["id"] for n in f.nodes}
+    state["series"] = {k: v for k, v in series.items() if k in live}
+    state["last_probe_at"] = stamp
+    store.save_state(state)
     return settings, f, results
 
 
@@ -70,6 +82,10 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                                          "model": settings.get("cloud_model")}):
             decision["fallback_added"] = config_write.ensure_fallback(settings["cloud_provider"], settings["cloud_model"])
         state["last_decision"] = decision
+        if decision["applied"]:
+            event = {"at": decision["at"], "reason": decision["reason"], "kind": target["kind"],
+                     "node": target.get("node_name"), "model": target.get("model"), "via": target.get("via")}
+            state["history"] = ((store.load_state().get("history") or []) + [event])[-HISTORY_LEN:]
         store.save_state({**store.load_state(), **state})
         return decision
 
@@ -102,13 +118,20 @@ def snapshot() -> dict:
     else:
         label = "off"
     healthy = [n for n in f.enabled() if (n.get("last_health") or {}).get("status") in ("ok", "degraded")]
+    primary = {k: v for k, v in config_write.current_primary().items() if k != "key_env"}
     return {
         "mode": settings["mode"],
         "label": label,
+        "primary": primary,
+        "local_model": settings.get("default_model") or "",
         "applied": applied,
         "down": bool(f.enabled()) and not healthy and applied.get("kind") != "cloud",
         "nodes": len(f.nodes),
         "healthy": len(healthy),
         "last_decision": state.get("last_decision"),
         "last_probe_at": state.get("last_probe_at"),
+        "series": state.get("series") or {},
+        "history": state.get("history") or [],
+        "fallback_chain": [{k: e.get(k) for k in ("provider", "model")} for e in config_write.fallback_chain()
+                           if isinstance(e, dict)],
     }

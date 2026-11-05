@@ -1,46 +1,161 @@
 // hermes-spark Desktop half: status-bar chip + fleet panel, palette entries, opt-in DGX Spark theme.
 // Talks only to this plugin's own REST namespace (/api/plugins/hermes-spark/*, dashboard/plugin_api.py).
-// Loaded uncompiled: jsx()/jsxs() calls, no JSX syntax.
+// Loaded uncompiled: jsx()/jsxs() calls, no JSX syntax. Styling is theme tokens; Spark green only
+// marks Spark-owned state (routed locally, load meters).
 import {
-  Button, host, haptic, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, requestTheme,
-  STATUSBAR_AREAS, StatusDot, THEMES_AREA, useQuery, useQueryClient
+  Button, host, haptic, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, requestTheme, ROUTES_AREA,
+  SIDEBAR_NAV_AREA, STATUSBAR_AREAS, THEMES_AREA, useQuery, useQueryClient
 } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'hermes-spark'
 const SPARK_GREEN = '#76b900'
-const MODES = ['prefer-local', 'auto', 'prefer-cloud']
+const MODES = [['prefer-local', 'Local'], ['auto', 'Auto'], ['prefer-cloud', 'Cloud']]
 const KEY = [ID, 'status']
+const PAGE_PATH = '/spark-fleet'
 
-const TONE = { ok: 'good', degraded: 'warn', down: 'bad' }
+const CSS = `
+.hs-chip{display:inline-flex;align-items:center;gap:6px}
+.hs-dot{width:7px;height:7px;border-radius:999px;flex-shrink:0;background:var(--ui-text-quaternary)}
+.hs-dot[data-tone=ok]{background:var(--ui-green,${SPARK_GREEN})}
+.hs-dot[data-tone=spark]{background:${SPARK_GREEN};box-shadow:0 0 0 2px color-mix(in srgb,${SPARK_GREEN} 25%,transparent)}
+.hs-dot[data-tone=warn]{background:var(--ui-orange,#df6500)}
+.hs-dot[data-tone=bad]{background:var(--ui-red,#e5484d)}
+.hs-panel{width:320px;max-width:calc(100vw - 24px);padding:4px 2px 2px;font-size:12px;color:var(--ui-text-primary)}
+.hs-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:2px 8px 0}
+.hs-title{font-weight:600;color:${SPARK_GREEN}}
+.hs-mode-tag{font-size:11px;color:var(--ui-text-tertiary)}
+.hs-route{padding:2px 8px 8px;font-size:11px;color:var(--ui-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-route b{font-weight:500;color:var(--ui-text-primary)}
+.hs-list{display:flex;flex-direction:column;gap:1px;border-top:1px solid var(--ui-stroke-tertiary);border-bottom:1px solid var(--ui-stroke-tertiary);padding:4px 0}
+.hs-row{display:grid;grid-template-columns:10px minmax(0,1fr) auto;column-gap:8px;row-gap:3px;align-items:center;padding:5px 8px;border-radius:5px}
+.hs-row[data-active=true]{background:var(--ui-row-active-background)}
+.hs-row[data-skipped=true] .hs-name,.hs-row[data-skipped=true] .hs-sub{opacity:.55}
+.hs-name{display:flex;align-items:center;gap:6px;min-width:0;font-weight:500}
+.hs-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-badge{font-size:10px;font-weight:500;padding:0 5px;border-radius:999px;line-height:15px;color:var(--ui-text-secondary);border:1px solid var(--ui-stroke-secondary)}
+.hs-badge[data-kind=active]{color:#000;background:${SPARK_GREEN};border-color:${SPARK_GREEN}}
+.hs-lat{font-size:11px;font-variant-numeric:tabular-nums;color:var(--ui-text-tertiary)}
+.hs-sub{grid-column:2 / 4;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ui-text-tertiary)}
+.hs-meter{flex:0 0 72px;height:4px;border-radius:999px;background:var(--ui-stroke-tertiary);overflow:hidden}
+.hs-meter>i{display:block;height:100%;border-radius:999px;background:${SPARK_GREEN}}
+.hs-meter[data-busy=true]>i{background:var(--ui-orange,#df6500)}
+.hs-sub-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-controls{display:flex;flex-direction:column;gap:8px;padding:8px 8px 4px}
+.hs-seg{display:grid;grid-template-columns:repeat(3,1fr);padding:2px;border-radius:7px;background:var(--ui-bg-tertiary,rgba(127,127,127,.12))}
+.hs-seg button{all:unset;cursor:pointer;text-align:center;font-size:11px;line-height:22px;border-radius:5px;color:var(--ui-text-secondary)}
+.hs-seg button:hover{color:var(--ui-text-primary)}
+.hs-seg button[aria-checked=true]{background:var(--ui-bg-elevated,var(--ui-bg-card));color:var(--ui-text-primary);box-shadow:0 0 0 1px var(--ui-stroke-secondary)}
+.hs-seg button:disabled{cursor:default;opacity:.6}
+.hs-actions{display:flex;gap:6px}
+.hs-actions>*{flex:1}
+.hs-foot{display:flex;justify-content:space-between;gap:8px;padding:2px 8px 4px;font-size:10.5px;color:var(--ui-text-quaternary)}
+.hs-link{all:unset;cursor:pointer;color:var(--ui-text-tertiary)}
+.hs-link:hover{color:${SPARK_GREEN}}
+.hs-error{padding:0 8px 6px;color:var(--ui-text-secondary)}
+.hs-error code{display:block;margin-top:4px;font-size:11px;color:var(--ui-text-tertiary);word-break:break-word}
+.hs-page{height:100%;overflow-y:auto;padding:20px 24px 32px;color:var(--ui-text-primary)}
+.hs-page-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:14px}
+.hs-page-head h1{font-size:22px;font-weight:600;margin:0}
+.hs-page-head h1 span{color:${SPARK_GREEN}}
+.hs-page-hint{font-size:12px;color:var(--ui-text-tertiary)}
+.hs-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.hs-stat{border:1px solid var(--ui-stroke-tertiary);border-radius:8px;padding:10px 14px;min-width:0}
+.hs-stat b{display:block;font-size:20px;font-weight:600;line-height:26px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-stat span{font-size:12px;color:var(--ui-text-tertiary)}
+.hs-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.hs-toolbar .hs-seg{width:260px}
+.hs-map{position:relative;border:1px solid var(--ui-stroke-tertiary);border-radius:10px;background:radial-gradient(ellipse at 30% 40%,color-mix(in srgb,${SPARK_GREEN} 6%,transparent),transparent 60%);overflow:hidden}
+.hs-map svg{display:block;width:100%;height:auto}
+.hs-map text{fill:var(--ui-text-primary);font-size:12px}
+.hs-map .t2{fill:var(--ui-text-tertiary);font-size:10.5px}
+.hs-map .t3{fill:var(--ui-text-quaternary);font-size:10px;letter-spacing:.08em}
+.hs-wire{fill:none;stroke:var(--ui-stroke-secondary);stroke-width:1.2}
+.hs-wire[data-off=true]{stroke-dasharray:3 5;opacity:.5}
+.hs-wire[data-live=true]{stroke:${SPARK_GREEN};stroke-width:2.2;stroke-dasharray:8 6;animation:hs-flow 0.9s linear infinite}
+.hs-wire[data-cloud=true]{stroke-dasharray:5 6}
+.hs-wire[data-cloud=true][data-live=true]{stroke:var(--ui-orange,#df6500)}
+@keyframes hs-flow{to{stroke-dashoffset:-28}}
+.hs-led{animation:hs-blink 1.8s ease-in-out infinite}
+.hs-led:nth-child(2n){animation-delay:.6s}
+.hs-led:nth-child(3n){animation-delay:1.1s}
+@keyframes hs-blink{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.hs-wire[data-live=true],.hs-led{animation:none}}
+.hs-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:14px}
+.hs-card{border:1px solid var(--ui-stroke-tertiary);border-radius:8px;padding:10px 12px;min-width:0}
+.hs-card[data-active=true]{border-color:${SPARK_GREEN};box-shadow:0 0 0 1px color-mix(in srgb,${SPARK_GREEN} 40%,transparent)}
+.hs-card-head{display:flex;align-items:center;gap:7px;font-weight:600}
+.hs-card-head .hs-lat{margin-left:auto;font-weight:400}
+.hs-card-sub{font-size:11px;color:var(--ui-text-tertiary);margin:2px 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-card svg{display:block;width:100%;height:38px}
+.hs-models{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.hs-models span{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-tertiary,rgba(127,127,127,.12));color:var(--ui-text-secondary)}
+.hs-models span[data-want=true]{color:#000;background:${SPARK_GREEN}}
+.hs-section{margin:18px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.hs-timeline{display:flex;flex-direction:column;border-left:1px solid var(--ui-stroke-tertiary);margin-left:6px}
+.hs-ev{position:relative;padding:4px 0 6px 14px;font-size:12px}
+.hs-ev::before{content:'';position:absolute;left:-4px;top:9px;width:7px;height:7px;border-radius:999px;background:var(--ui-text-quaternary)}
+.hs-ev[data-kind=local]::before{background:${SPARK_GREEN}}
+.hs-ev[data-via=failover]::before{background:var(--ui-orange,#df6500)}
+.hs-ev small{display:block;color:var(--ui-text-tertiary);font-size:11px}
+`
 
-function chipText(s) {
-  if (!s) return 'spark · …'
-  if (!s.nodes || !s.nodes.length) return 'spark · no nodes'
-  return `spark · ${s.down ? 'down' : s.label} · ${s.mode}`
+function ago(iso) {
+  if (!iso) return ''
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000)
+  return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`
 }
 
-function NodeRow({ node, active }) {
+function routeLine(s) {
+  const a = s.applied || {}
+  if (a.kind === 'local') return ['Routed to ', a.node_name, ` · ${a.model || ''}`]
+  if (a.kind === 'cloud') return ['Routed to cloud ', `${a.provider}/${a.model}`, a.via === 'failover' ? ' · failover' : '']
+  const p = s.primary || {}
+  return ['Not routed by Spark · Hermes uses ', p.provider || 'its own primary', p.default ? ` · ${p.default}` : '']
+}
+
+function chip(s, failed) {
+  if (failed) return { tone: 'bad', text: 'spark · unreachable' }
+  if (!s) return { tone: '', text: 'spark' }
+  if (!s.nodes || !s.nodes.length) return { tone: '', text: 'spark · no boxes' }
+  const a = s.applied || {}
+  if (s.down) return { tone: 'bad', text: 'spark · all down' }
+  if (a.kind === 'local') return { tone: 'spark', text: `spark · ${a.node_name}` }
+  if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'spark · cloud' }
+  return { tone: '', text: `spark · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
+}
+
+function NodeRow({ node, active, freest, want }) {
   const h = node.last_health || {}
+  const off = node.enabled === false
   const load = typeof h.load_proxy === 'number' ? h.load_proxy : null
-  const tone = node.enabled === false ? 'muted' : TONE[h.status] || 'muted'
-  return jsxs('div', {
-    className: 'flex flex-col gap-1 rounded px-2 py-1.5',
-    style: active ? { boxShadow: `inset 2px 0 0 ${SPARK_GREEN}` } : undefined,
-    children: [
-      jsxs('div', { className: 'flex items-center gap-2 text-xs', children: [
-        jsx(StatusDot, { tone }),
-        jsx('span', { className: 'font-medium', children: node.name }),
-        jsx('span', { className: 'text-(--ui-text-tertiary)', children: node.kind }),
-        jsx('span', { className: 'ml-auto tabular-nums text-(--ui-text-tertiary)',
-          children: node.enabled === false ? 'disabled' : h.latency_ms != null ? `${h.latency_ms} ms` : h.status || 'unprobed' })
-      ] }),
-      load !== null && jsx('div', { className: 'h-1 w-full overflow-hidden rounded bg-(--ui-border)', title: `load ${load}`,
-        children: jsx('div', { className: 'h-full', style: { width: `${Math.max(4, load * 100)}%`, background: load > 0.75 ? 'var(--ui-warning, #df6500)' : SPARK_GREEN } }) }),
-      h.status && h.status !== 'ok' && h.detail && jsx('div', { className: 'text-[0.6875rem] text-(--ui-text-tertiary)', children: h.detail })
-    ]
-  })
+  const missing = want && h.status && h.status !== 'down' && !(h.models || []).includes(want)
+  const tone = off ? '' : h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : h.status === 'down' ? 'bad' : ''
+  let sub
+  if (off) sub = 'disabled'
+  else if (h.status === 'down') sub = h.detail || 'down'
+  else if (!h.status) sub = 'not probed yet'
+  else if (missing) sub = `skipped · no ${want}`
+  else {
+    const bits = [load === null ? 'load unknown' : load < 0.05 ? 'idle' : `${Math.round(load * 100)}% busy`]
+    if (h.free_vram_approx) bits.push(`${Math.round(h.free_vram_approx / 1e9)} GB free`)
+    sub = bits.join(' · ')
+  }
+  return jsxs('div', { className: 'hs-row', 'data-active': active, 'data-skipped': Boolean(off || missing || h.status === 'down'), children: [
+    jsx('span', { className: 'hs-dot', 'data-tone': tone }),
+    jsxs('div', { className: 'hs-name', children: [
+      jsx('span', { children: node.name }),
+      active && jsx('em', { className: 'hs-badge', 'data-kind': 'active', style: { fontStyle: 'normal' }, children: 'active' }),
+      !active && freest && jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, children: 'freest' })
+    ] }),
+    jsx('span', { className: 'hs-lat', children: h.latency_ms != null && !off ? `${h.latency_ms} ms` : '' }),
+    jsxs('div', { className: 'hs-sub', children: [
+      load !== null && !off && !missing && h.status !== 'down' && jsx('span', { className: 'hs-meter', 'data-busy': load > 0.75,
+        children: jsx('i', { style: { width: `${Math.max(3, load * 100)}%` } }) }),
+      jsx('span', { className: 'hs-sub-text', children: `${node.kind} · ${sub}` })
+    ] })
+  ] })
 }
 
 function Panel({ ctx, status }) {
@@ -62,59 +177,298 @@ function Panel({ ctx, status }) {
   }
   const s = status || {}
   const activeId = (s.applied || {}).node_id
-  return jsxs('div', { className: 'flex w-72 flex-col gap-2 p-2 text-xs', children: [
-    jsxs('div', { className: 'flex items-center justify-between', children: [
-      jsx('span', { className: 'font-medium', style: { color: SPARK_GREEN }, children: 'Spark fleet' }),
-      jsx('span', { className: 'text-(--ui-text-tertiary)',
-        children: s.applied && s.applied.kind ? (s.applied.kind === 'cloud' ? `cloud · ${s.applied.model}` : `${s.applied.node_name} · ${s.applied.model}`) : 'not routed yet' })
+  const freestId = (s.decision || s.last_decision || {}).freest_node_id
+  const [lead, strong, tail] = routeLine(s)
+  return jsxs('div', { className: 'hs-panel', children: [
+    jsxs('div', { className: 'hs-head', children: [
+      jsx('span', { className: 'hs-title', children: 'Spark fleet' }),
+      jsx('span', { className: 'hs-mode-tag', children: `mode: ${s.mode || '…'}` })
     ] }),
-    jsx('div', { className: 'flex flex-col gap-0.5', children: (s.nodes || []).length
-      ? s.nodes.map(n => jsx(NodeRow, { node: n, active: n.id === activeId }, n.id))
-      : jsx('div', { className: 'text-(--ui-text-tertiary)', children: 'Add a box: hermes spark add --name gx10 --url http://<host>:11434/v1' }) }),
-    jsx('div', { className: 'flex gap-1', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(m =>
-      jsx(Button, { key: m, size: 'micro', variant: s.mode === m ? 'default' : 'ghost', role: 'radio', 'aria-checked': s.mode === m,
-        disabled: Boolean(busy), onClick: () => { haptic('tap'); run('mode', '/mode', { mode: m }) }, children: m })) }),
-    jsxs('div', { className: 'flex gap-1', children: [
-      jsx(Button, { size: 'micro', disabled: Boolean(busy), onClick: () => run('use', '/use', { node: 'freest' }),
-        children: busy === 'use' ? 'Routing…' : 'Use freest' }),
-      jsx(Button, { size: 'micro', variant: 'ghost', disabled: Boolean(busy), onClick: () => run('probe', '/probe'),
-        children: busy === 'probe' ? 'Probing…' : 'Probe now' }),
-      jsx(Button, { size: 'micro', variant: 'ghost', className: 'ml-auto', title: 'Switch to the DGX Spark theme',
-        onClick: () => requestTheme('dgx-spark'), children: 'Spark look' })
+    jsxs('div', { className: 'hs-route', title: `${lead}${strong}${tail}`, children: [lead, jsx('b', { children: strong }), tail] }),
+    jsx('div', { className: 'hs-list', children: (s.nodes || []).length
+      ? s.nodes.map(n => jsx(NodeRow, { node: n, active: n.id === activeId, freest: n.id === freestId, want: s.local_model }, n.id))
+      : jsx('div', { className: 'hs-error', children: 'No boxes yet. In a terminal: hermes spark add --name gx10 --url http://<host>:11434/v1' }) }),
+    jsxs('div', { className: 'hs-controls', children: [
+      jsx('div', { className: 'hs-seg', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(([m, label]) =>
+        jsx('button', { key: m, type: 'button', role: 'radio', 'aria-checked': s.mode === m, disabled: Boolean(busy), title: m,
+          onClick: () => { if (s.mode !== m) { haptic('tap'); run('mode', '/mode', { mode: m }) } }, children: label })) }),
+      jsxs('div', { className: 'hs-actions', children: [
+        jsx(Button, { size: 'sm', disabled: Boolean(busy), onClick: () => run('use', '/use', { node: 'freest' }),
+          children: busy === 'use' ? 'Routing…' : 'Use freest' }),
+        jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), onClick: () => run('probe', '/probe'),
+          children: busy === 'probe' ? 'Probing…' : 'Probe now' })
+      ] })
     ] }),
-    s.last_decision && s.last_decision.reason && jsx('div', { className: 'text-[0.6875rem] text-(--ui-text-tertiary)',
-      children: `last: ${s.last_decision.reason}` })
+    jsxs('div', { className: 'hs-foot', children: [
+      jsx('button', { type: 'button', className: 'hs-link', onClick: () => host.navigate(PAGE_PATH), children: 'Open fleet map' }),
+      jsx('span', { children: s.last_probe_at ? `probed ${ago(s.last_probe_at)}` : '' }),
+      jsx('button', { type: 'button', className: 'hs-link', onClick: () => requestTheme('dgx-spark'), children: 'DGX Spark theme' })
+    ] })
   ] })
 }
 
 function Unreachable({ error, onRetry }) {
-  return jsxs('div', { className: 'flex w-72 flex-col gap-2 p-2 text-xs', children: [
-    jsx('span', { className: 'font-medium', style: { color: SPARK_GREEN }, children: 'Spark fleet' }),
-    jsx('div', { children: 'The hermes-spark backend did not answer.' }),
-    jsx('div', { className: 'break-words text-(--ui-text-tertiary)', children: String((error && error.message) || error || 'unknown error') }),
-    jsx('div', { className: 'text-(--ui-text-tertiary)', children: 'Check the plugin is enabled (hermes plugins enable hermes-spark) and restart the gateway.' }),
-    jsx(Button, { size: 'micro', onClick: onRetry, children: 'Retry' })
+  return jsxs('div', { className: 'hs-panel', children: [
+    jsx('div', { className: 'hs-head', children: jsx('span', { className: 'hs-title', children: 'Spark fleet' }) }),
+    jsxs('div', { className: 'hs-error', children: [
+      'The hermes-spark backend did not answer. Enable the plugin on the Hermes this app is connected to and restart its dashboard.',
+      jsx('code', { children: String((error && error.message) || error || 'unknown error') })
+    ] }),
+    jsx('div', { className: 'hs-controls', children: jsx(Button, { size: 'sm', onClick: onRetry, children: 'Retry' }) })
   ] })
 }
 
 function Chip({ ctx }) {
   const [open, setOpen] = useState(false)
   const q = useQuery({ queryKey: KEY, queryFn: () => ctx.rest('/status'), refetchInterval: 15000, retry: 1, staleTime: 5000 })
-  const s = q.data
-  const failed = q.isError && !s
-  const local = s && !s.down && s.applied && s.applied.kind === 'local'
-  const dot = failed || (s && s.down) ? 'var(--ui-destructive, #df6500)' : local ? SPARK_GREEN : 'var(--ui-text-tertiary)'
+  const failed = q.isError && !q.data
+  const c = chip(q.data, failed)
   return jsxs(Popover, { open, onOpenChange: setOpen, children: [
-    jsx(PopoverTrigger, { asChild: true, children: jsxs(Button, {
-      variant: 'ghost', size: 'micro', 'aria-label': 'Spark fleet', className: 'gap-1.5 text-[0.6875rem]',
-      children: [
-        jsx('span', { 'aria-hidden': true, style: { width: 6, height: 6, borderRadius: 999, display: 'inline-block', background: dot } }),
-        jsx('span', { children: failed ? 'spark · unreachable' : chipText(s) })
-      ]
+    jsx(PopoverTrigger, { asChild: true, children: jsx(Button, {
+      variant: 'ghost', size: 'micro', 'aria-label': `Spark fleet: ${c.text}`, className: 'text-[0.6875rem]',
+      children: jsxs('span', { className: 'hs-chip', children: [jsx('span', { className: 'hs-dot', 'data-tone': c.tone }), c.text] })
     }) }),
     jsx(PopoverContent, { side: 'top', align: 'end', 'aria-label': 'Spark fleet', children: failed
       ? jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() })
-      : jsx(Panel, { ctx, status: s }) })
+      : jsx(Panel, { ctx, status: q.data }) })
+  ] })
+}
+
+// ---------------------------------------------------------------------------
+// Fleet page (sidebar "Spark fleet"): a hardware map of where Hermes sends its requests.
+// SVG only (the plugin import whitelist allows no WebGL libraries); isometric server boxes.
+
+const W = 960
+const H = 470
+const HUB = { x: 165, y: 255 }
+const CLOUD = { x: 520, y: 70 }
+
+function nodeTone(n) {
+  const h = n.last_health || {}
+  if (n.enabled === false) return 'off'
+  return h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : h.status === 'down' ? 'bad' : 'off'
+}
+
+// Healthy but not a candidate: it lacks the local model every route needs.
+function skipped(n, s) {
+  const h = n.last_health || {}
+  return Boolean(s.local_model && h.status && h.status !== 'down' && !(h.models || []).includes(s.local_model))
+}
+
+const TONE_FILL = { ok: 'var(--ui-green,#3fb950)', warn: 'var(--ui-orange,#df6500)', bad: 'var(--ui-red,#e5484d)', off: 'var(--ui-text-quaternary)' }
+
+function nodePositions(count) {
+  const cols = count > 4 ? 2 : 1
+  const rows = Math.ceil(count / cols)
+  const top = 150
+  const span = H - top - 40
+  const step = rows > 1 ? span / (rows - 1) : 0
+  return Array.from({ length: count }, (_, i) => {
+    const col = cols === 2 ? i % 2 : 0
+    const row = cols === 2 ? Math.floor(i / 2) : i
+    return { x: cols === 2 ? 640 + col * 190 : 720, y: rows > 1 ? top + row * step : top + span / 2 }
+  })
+}
+
+// An isometric server: top, left and right faces, rack lines and LEDs on the front.
+function IsoServer({ x, y, tone, active, load }) {
+  const w = 46
+  const d = 26
+  const h = 40
+  const top = `${x},${y - h} ${x + w},${y - h + d / 2} ${x},${y - h + d} ${x - w},${y - h + d / 2}`
+  const left = `${x - w},${y - h + d / 2} ${x},${y - h + d} ${x},${y + d} ${x - w},${y + d / 2}`
+  const right = `${x},${y - h + d} ${x + w},${y - h + d / 2} ${x + w},${y + d / 2} ${x},${y + d}`
+  const dim = tone === 'off' || tone === 'bad'
+  const led = active ? SPARK_GREEN : TONE_FILL[tone]
+  const racks = [0.3, 0.55, 0.8].map(f => {
+    const yy = y - h + d + f * h
+    return jsx('line', { x1: x - w + 4, y1: yy - d / 2 + 2, x2: x - 4, y2: yy, stroke: 'currentColor', strokeOpacity: 0.18 }, f)
+  })
+  const leds = [0, 1, 2].map(i => jsx('circle', {
+    className: dim ? undefined : 'hs-led', cx: x + 10 + i * 9, cy: y - h + d + 8 - i * 4.5 + 10, r: 2.2, fill: led,
+    opacity: dim ? 0.5 : 1
+  }, i))
+  const meterLen = 30
+  return jsxs('g', { style: { color: 'var(--ui-text-primary)' }, opacity: tone === 'off' ? 0.45 : 1, children: [
+    active && jsx('ellipse', { cx: x, cy: y + d / 2 + 6, rx: w + 16, ry: d, fill: SPARK_GREEN, opacity: 0.12 }),
+    jsx('polygon', { points: left, fill: 'var(--ui-bg-tertiary,#1b1b1f)', stroke: 'var(--ui-stroke-secondary)' }),
+    jsx('polygon', { points: right, fill: 'var(--ui-bg-secondary,#141417)', stroke: 'var(--ui-stroke-secondary)' }),
+    jsx('polygon', { points: top, fill: active ? `color-mix(in srgb, ${SPARK_GREEN} 30%, var(--ui-bg-elevated,#26262b))` : 'var(--ui-bg-elevated,#26262b)', stroke: active ? SPARK_GREEN : 'var(--ui-stroke-secondary)' }),
+    ...racks,
+    ...leds,
+    // load meter along the right face's bottom edge
+    typeof load === 'number' && jsx('line', { x1: x + 6, y1: y + d - 6, x2: x + 6 + meterLen, y2: y + d - 6 - meterLen / 2 * (d / w), stroke: 'currentColor', strokeOpacity: 0.15, strokeWidth: 3, strokeLinecap: 'round' }),
+    typeof load === 'number' && jsx('line', { x1: x + 6, y1: y + d - 6, x2: x + 6 + meterLen * Math.max(0.05, load), y2: y + d - 6 - meterLen * Math.max(0.05, load) / 2 * (d / w), stroke: load > 0.75 ? 'var(--ui-orange,#df6500)' : SPARK_GREEN, strokeWidth: 3, strokeLinecap: 'round' })
+  ] })
+}
+
+function Hub({ s }) {
+  const p = s.primary || {}
+  const a = s.applied || {}
+  const model = a.model || p.default || ''
+  return jsxs('g', { children: [
+    jsx('circle', { cx: HUB.x, cy: HUB.y, r: 46, fill: 'none', stroke: 'var(--ui-stroke-tertiary)' }),
+    jsx('circle', { cx: HUB.x, cy: HUB.y, r: 34, fill: 'var(--ui-bg-elevated,#26262b)', stroke: SPARK_GREEN, strokeWidth: 1.5 }),
+    jsx('text', { x: HUB.x, y: HUB.y + 8, textAnchor: 'middle', style: { fontSize: 24, fontWeight: 700, fill: SPARK_GREEN }, children: 'H' }),
+    jsx('text', { x: HUB.x, y: HUB.y + 70, textAnchor: 'middle', style: { fontWeight: 600 }, children: 'Hermes' }),
+    jsx('text', { className: 't2', x: HUB.x, y: HUB.y + 86, textAnchor: 'middle', children: model.length > 30 ? `${model.slice(0, 29)}…` : model }),
+    jsx('text', { className: 't3', x: HUB.x, y: HUB.y - 60, textAnchor: 'middle', children: 'AGENT' })
+  ] })
+}
+
+function Cloud({ s, live }) {
+  const chain = (s.fallback_chain || []).filter(e => e.provider && e.provider !== 'custom')
+  const last = chain[chain.length - 1]
+  const label = live ? `${(s.applied || {}).provider}/${(s.applied || {}).model}` : last ? `${last.provider}/${last.model}` : 'no cloud backup'
+  const { x, y } = CLOUD
+  return jsxs('g', { opacity: live ? 1 : 0.7, children: [
+    jsx('path', { d: `M${x - 44} ${y + 14} a18 18 0 0 1 6 -34 a26 26 0 0 1 48 -6 a20 20 0 0 1 30 18 a16 16 0 0 1 -4 22 z`,
+      fill: 'var(--ui-bg-elevated,#26262b)', stroke: live ? 'var(--ui-orange,#df6500)' : 'var(--ui-stroke-secondary)', strokeWidth: live ? 1.8 : 1 }),
+    jsx('text', { x: x + 66, y: y - 2, children: 'Cloud backup' }),
+    jsx('text', { className: 't2', x: x + 66, y: y + 13, children: label })
+  ] })
+}
+
+function wirePath(a, b) {
+  const mx = (a.x + b.x) / 2
+  return `M${a.x} ${a.y} C${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`
+}
+
+function Packets({ id, color }) {
+  return [0, 0.6, 1.2].map(delay => jsx('circle', { r: 3.2, fill: color, children:
+    jsx('animateMotion', { dur: '1.8s', begin: `${delay}s`, repeatCount: 'indefinite', children: jsx('mpath', { href: `#${id}` }) }) }, delay))
+}
+
+function FleetMap({ s }) {
+  const nodes = s.nodes || []
+  const pos = nodePositions(nodes.length)
+  const a = s.applied || {}
+  const cloudLive = a.kind === 'cloud'
+  const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const hubEdge = { x: HUB.x + 46, y: HUB.y }
+  const cloudPath = `M${HUB.x} ${HUB.y - 46} C${HUB.x} ${CLOUD.y + 10}, ${CLOUD.x - 140} ${CLOUD.y}, ${CLOUD.x - 46} ${CLOUD.y}`
+  return jsx('div', { className: 'hs-map', children: jsxs('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Spark fleet map', children: [
+    jsx('path', { id: 'hs-wire-cloud', className: 'hs-wire', 'data-cloud': true, 'data-live': cloudLive, d: cloudPath }),
+    cloudLive && !reduced && Packets({ id: 'hs-wire-cloud', color: 'var(--ui-orange,#df6500)' }),
+    ...nodes.map((n, i) => {
+      const active = a.kind === 'local' && a.node_id === n.id
+      const tone = skipped(n, s) ? 'off' : nodeTone(n)
+      const end = { x: pos[i].x - 50, y: pos[i].y + 4 }
+      const id = `hs-wire-${n.id}`
+      return jsxs('g', { children: [
+        jsx('path', { id, className: 'hs-wire', 'data-live': active, 'data-off': tone === 'off' || tone === 'bad', d: wirePath(hubEdge, end) }),
+        active && !reduced && Packets({ id, color: SPARK_GREEN })
+      ] }, `w-${n.id}`)
+    }),
+    jsx(Hub, { s }),
+    jsx(Cloud, { s, live: cloudLive }),
+    ...nodes.map((n, i) => {
+      const h = n.last_health || {}
+      const active = a.kind === 'local' && a.node_id === n.id
+      const tone = skipped(n, s) ? 'off' : nodeTone(n)
+      const { x, y } = pos[i]
+      const missing = s.local_model && h.status && h.status !== 'down' && !(h.models || []).includes(s.local_model)
+      const resident = (h.resident || []).slice(0, 2).join(', ')
+      const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `no ${s.local_model}`
+        : [h.latency_ms != null ? `${h.latency_ms} ms` : null, typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
+           h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
+      return jsxs('g', { children: [
+        jsx(IsoServer, { x, y, tone, active, load: h.load_proxy }),
+        jsx('circle', { cx: x + 62, cy: y - 22, r: 3.5, fill: active ? SPARK_GREEN : TONE_FILL[tone] }),
+        jsx('text', { x: x + 70, y: y - 18, style: { fontWeight: 600 }, children: n.name + (active ? '  ← routed' : '') }),
+        jsx('text', { className: 't2', x: x + 70, y: y - 3, children: line2 }),
+        resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 34 ? resident.slice(0, 33) + '…' : resident}` })
+      ] }, n.id)
+    })
+  ] }) })
+}
+
+function Sparkline({ points }) {
+  const pts = (points || []).filter(p => p.lat != null)
+  if (pts.length < 2) return jsx('svg', { viewBox: '0 0 200 38', children: jsx('text', { className: 't2', x: 0, y: 22, style: { fill: 'var(--ui-text-quaternary)', fontSize: 11 }, children: 'collecting…' }) })
+  const max = Math.max(...pts.map(p => p.lat), 10)
+  const xs = i => (i / (pts.length - 1)) * 200
+  const lat = pts.map((p, i) => `${xs(i).toFixed(1)},${(34 - (p.lat / max) * 30).toFixed(1)}`).join(' ')
+  const load = pts.map((p, i) => `${xs(i).toFixed(1)},${(36 - (p.load || 0) * 32).toFixed(1)}`).join(' ')
+  return jsxs('svg', { viewBox: '0 0 200 38', preserveAspectRatio: 'none', children: [
+    jsx('polygon', { points: `0,38 ${load} 200,38`, fill: SPARK_GREEN, opacity: 0.18 }),
+    jsx('polyline', { points: lat, fill: 'none', stroke: 'var(--ui-text-secondary)', strokeWidth: 1.2, vectorEffect: 'non-scaling-stroke' })
+  ] })
+}
+
+function NodeCard({ n, s }) {
+  const h = n.last_health || {}
+  const active = (s.applied || {}).kind === 'local' && (s.applied || {}).node_id === n.id
+  const want = s.local_model
+  const models = (h.models || n.models || []).filter(m => !/embed/i.test(m))
+  return jsxs('div', { className: 'hs-card', 'data-active': active, children: [
+    jsxs('div', { className: 'hs-card-head', children: [
+      jsx('span', { className: 'hs-dot', 'data-tone': active ? 'spark' : { ok: 'ok', warn: 'warn', bad: 'bad' }[nodeTone(n)] || '' }),
+      jsx('span', { children: n.name }),
+      jsx('span', { className: 'hs-lat', children: h.latency_ms != null ? `${h.latency_ms} ms` : '' })
+    ] }),
+    jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
+    jsx(Sparkline, { points: (s.series || {})[n.id] }),
+    jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', { 'data-want': m === want, title: m, children: m }, m)) })
+  ] })
+}
+
+function Timeline({ history }) {
+  const items = (history || []).slice().reverse().slice(0, 12)
+  if (!items.length) return jsx('div', { className: 'hs-page-hint', children: 'No routing changes yet. Use freest, a mode change or a failover will appear here.' })
+  return jsx('div', { className: 'hs-timeline', children: items.map((e, i) => jsxs('div', { className: 'hs-ev', 'data-kind': e.kind, 'data-via': e.via || '', children: [
+    e.kind === 'local' ? `→ ${e.node} · ${e.model}` : `→ cloud · ${e.model}`,
+    jsx('small', { children: `${ago(e.at)} · ${e.reason}` })
+  ] }, `${e.at}-${i}`)) })
+}
+
+function FleetPage({ ctx }) {
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState('')
+  const q = useQuery({ queryKey: KEY, queryFn: () => ctx.rest('/status'), refetchInterval: 10000, retry: 1, staleTime: 3000 })
+  const run = async (label, path, body) => {
+    setBusy(label)
+    try {
+      const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
+      qc.setQueryData(KEY, next)
+      const d = next.decision || {}
+      host.notify({ kind: d.warning ? 'warning' : 'success', title: 'Spark fleet', message: d.warning || d.reason || 'done',
+        detail: d.applied ? 'Applies from the next message.' : undefined })
+    } catch (err) {
+      host.notifyError(err, 'Spark fleet request failed')
+    } finally {
+      setBusy('')
+    }
+  }
+  if (q.isError && !q.data) return jsx('div', { className: 'hs-page', children: jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() }) })
+  const s = q.data || {}
+  const nodes = s.nodes || []
+  const enabled = nodes.filter(n => n.enabled !== false)
+  const a = s.applied || {}
+  const [lead, strong, tail] = routeLine(s)
+  return jsxs('div', { className: 'hs-page', children: [
+    jsxs('div', { className: 'hs-page-head', children: [
+      jsxs('h1', { children: [jsx('span', { children: 'Spark' }), ' fleet'] }),
+      jsx('div', { className: 'hs-page-hint', children: `${lead}${strong}${tail}` })
+    ] }),
+    jsxs('div', { className: 'hs-stats', children: [
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: nodes.length }), jsx('span', { children: 'Boxes' })] }),
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: `${s.healthy ?? '…'}/${enabled.length}` }), jsx('span', { children: 'Healthy' })] }),
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { style: a.kind === 'local' ? { color: SPARK_GREEN } : undefined, children: a.kind === 'local' ? a.node_name : a.kind === 'cloud' ? 'cloud' : '—' }), jsx('span', { children: 'Routed to' })] }),
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] })
+    ] }),
+    jsxs('div', { className: 'hs-toolbar', children: [
+      jsx('div', { className: 'hs-seg', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(([m, label]) =>
+        jsx('button', { key: m, type: 'button', role: 'radio', 'aria-checked': s.mode === m, disabled: Boolean(busy), title: m,
+          onClick: () => { if (s.mode !== m) { haptic('tap'); run('mode', '/mode', { mode: m }) } }, children: label })) }),
+      jsx(Button, { size: 'sm', disabled: Boolean(busy), onClick: () => run('use', '/use', { node: 'freest' }), children: busy === 'use' ? 'Routing…' : 'Use freest' }),
+      jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy), onClick: () => run('probe', '/probe'), children: busy === 'probe' ? 'Probing…' : 'Probe now' }),
+      jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
+    ] }),
+    jsx(FleetMap, { s }),
+    jsx('div', { className: 'hs-cards', children: nodes.map(n => jsx(NodeCard, { n, s }, n.id)) }),
+    jsx('div', { className: 'hs-section', children: 'Routing history' }),
+    jsx(Timeline, { history: s.history })
   ] })
 }
 
@@ -138,6 +492,10 @@ export default {
   description: 'Which Spark / Ollama box Hermes is routed to, its health, and one-click mode / freest switching.',
   defaultEnabled: true,
   register(ctx) {
+    const style = document.createElement('style')
+    style.textContent = CSS
+    document.head.append(style)
+    ctx.onDispose(() => style.remove())
     const post = async (path, body, label) => {
       try {
         const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 30000 })
@@ -147,6 +505,11 @@ export default {
         host.notifyError(err, `${label} failed`)
       }
     }
+    const openPage = () => host.navigate(PAGE_PATH)
+    ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: PAGE_PATH }, render: () => jsx(FleetPage, { ctx }) })
+    ctx.register({ id: 'nav', area: SIDEBAR_NAV_AREA, data: { path: PAGE_PATH, label: 'Spark fleet', codicon: 'server' } })
+    ctx.register({ id: 'palette-open', area: PALETTE_AREA,
+      data: { id: 'spark-open', label: 'Spark: open the fleet map', keywords: ['spark', 'fleet', 'hardware', 'map'], run: openPage } })
     ctx.register({ id: 'chip', area: STATUSBAR_AREAS.right, order: 125, render: () => jsx(Chip, { ctx }) })
     ctx.register({ id: 'theme', area: THEMES_AREA, data: dgxSparkTheme })
     ctx.register({ id: 'palette-freest', area: PALETTE_AREA,
@@ -155,7 +518,7 @@ export default {
     ctx.register({ id: 'palette-probe', area: PALETTE_AREA,
       data: { id: 'spark-probe', label: 'Spark: probe the fleet', keywords: ['spark', 'health'],
         run: () => post('/probe', {}, 'Spark: probe') } })
-    for (const m of MODES) {
+    for (const [m] of MODES) {
       ctx.register({ id: `palette-mode-${m}`, area: PALETTE_AREA,
         data: { id: `spark-mode-${m}`, label: `Spark: mode ${m}`, keywords: ['spark', 'mode', 'routing'],
           run: () => post('/mode', { mode: m }, `Spark: ${m}`) } })
