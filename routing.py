@@ -68,6 +68,26 @@ def _keep_current(current, nodes, results, freest, want, settings) -> bool:
     return cur[1] - best[1] <= margin
 
 
+def model_tiers(settings: dict) -> list[str]:
+    """The local models in order of preference: the main one, then `fallback_models`.
+    [""] when no model is set (any box, its own model)."""
+    tiers = [settings.get("default_model") or ""] + [m for m in (settings.get("fallback_models") or []) if m]
+    out = []
+    for m in tiers:
+        if m not in out:
+            out.append(m)
+    return out if out[0] else [""]
+
+
+def choose_tier(nodes: list[dict], results: dict[str, dict], settings: dict) -> tuple[str, int]:
+    """(model, tier index) of the first tier that some enabled, healthy box can serve; tier 0 if none."""
+    tiers = model_tiers(settings)
+    for i, m in enumerate(tiers):
+        if any(n.get("enabled", True) and routable(n, results.get(n["id"]), m) for n in nodes):
+            return m, i
+    return tiers[0], 0
+
+
 def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current: dict) -> dict:
     """Return a decision: {"target": {...}, "reason", "healthy_locals", "freest_node_id", ...}.
 
@@ -75,19 +95,22 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
     "via", "pinned"}. `via` is "failover" when cloud was applied because every local was down.
     """
     mode = settings.get("mode", "auto")
-    want = settings.get("default_model") or ""
     labels = settings.get("prefer_labels") or ()
     enabled = [n for n in nodes if n.get("enabled", True)]
+    want, tier = choose_tier(enabled, results, settings)
     healthy = [n for n in enabled if routable(n, results.get(n["id"]), want)]
     freest = pick_freest(enabled, results, want, labels)
+    note = f" (fallback model {want})" if tier else ""
 
-    pinned = next((n for n in healthy if current.get("pinned") and n["id"] == current.get("node_id")), None)
-    if pinned is not None:
-        target = _local(pinned, results[pinned["id"]], want, current, f"kept on {pinned['name']} (you chose it)")
+    pinned_node = next((n for n in enabled if current.get("pinned") and n["id"] == current.get("node_id")), None)
+    pin_model = next((m for m in model_tiers(settings) if pinned_node and routable(pinned_node, results.get(pinned_node["id"]), m)), None)
+    if pinned_node is not None and pin_model is not None:
+        target = _local(pinned_node, results[pinned_node["id"]], pin_model, current, f"kept on {pinned_node['name']} (you chose it)")
     elif mode == "prefer-cloud":
         target = _cloud(settings, "prefer-cloud mode")
     elif freest is None:
-        why = f"no box available with {want}" if want and enabled else "no box available"
+        why = (f"no box available with {' or '.join(model_tiers(settings))}" if want and enabled
+               else "no box available")
         target = _cloud(settings, f"{why}, using cloud")
         target["via"] = "failover"
     elif (current.get("kind") == "cloud" and current.get("via") == "failover"
@@ -96,11 +119,15 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
         target["via"] = "failover"
     elif _keep_current(current, enabled, results, freest, want, settings):
         node = next(n for n in enabled if n["id"] == current["node_id"])
-        target = _local(node, results[node["id"]], want, current, f"staying on {node['name']}")
+        target = _local(node, results[node["id"]], want, current, f"staying on {node['name']}{note}")
     else:
         back = current.get("kind") == "cloud" and current.get("via") == "failover"
-        target = _local(freest, results[freest["id"]], want, current,
-                        f"back on {freest['name']} (it recovered)" if back else f"least busy box: {freest['name']}")
+        upgraded = (current.get("kind") == "local" and current.get("model") and current.get("model") != want
+                    and tier == 0 and want)
+        reason = (f"back on {freest['name']} (it recovered)" if back
+                  else f"back to your main model on {freest['name']}" if upgraded
+                  else f"least busy box: {freest['name']}")
+        target = _local(freest, results[freest["id"]], want, current, reason + note)
 
     return {
         "at": now_iso(),
@@ -109,6 +136,8 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
         "reason": target["reason"],
         "healthy_locals": [n["name"] for n in healthy],
         "freest_node_id": freest["id"] if freest else None,
+        "tier": tier,
+        "tier_model": want,
         "changed": not same_target(target, current),
     }
 

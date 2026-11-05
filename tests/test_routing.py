@@ -97,3 +97,44 @@ def test_model_choice_without_a_default():
     assert model_for(GX, s, "", "") == "qwen"              # already in memory
     assert model_for(GX, s, "", "gemma") == "gemma"        # keep the current one
     assert model_for(GX, snap(models=("mxbai-embed-large", "gemma")), "", "") == "gemma"  # never an embedder
+
+
+MINI = {"id": "c", "name": "mini", "base_url": "http://mini:11434/v1", "kind": "ollama", "labels": []}
+
+
+def tiered(**kw):
+    return settings(fallback_models=["small"], **kw)
+
+
+def test_fallback_tier_only_when_no_box_has_the_main_model():
+    nodes = NODES + [MINI]
+    res = {"a": snap(load=0.5), "b": snap(status="down"), "c": snap(models=("small",), load=0.0)}
+    d = decide(tiered(), nodes, res, {})
+    assert d["target"]["node_name"] == "gx10" and d["tier"] == 0   # busier, but has the main model
+    res["a"] = snap(status="down")
+    d = decide(tiered(), nodes, res, {})
+    t = d["target"]
+    assert t["node_name"] == "mini" and t["model"] == "small" and d["tier"] == 1
+    assert "fallback model small" in d["reason"]
+
+
+def test_back_to_the_main_model_when_its_box_recovers():
+    nodes = NODES + [MINI]
+    cur = {"kind": "local", "node_id": "c", "model": "small"}
+    res = {"a": snap(load=0.5), "b": snap(status="down"), "c": snap(models=("small",))}
+    d = decide(tiered(), nodes, res, cur)
+    assert d["target"]["node_name"] == "gx10" and d["target"]["model"] == "qwen"
+    assert d["reason"] == "back to your main model on gx10"
+
+
+def test_every_tier_down_means_cloud():
+    res = {"a": snap(status="down"), "b": snap(status="down"), "c": snap(status="down")}
+    d = decide(tiered(), NODES + [MINI], res, {})
+    assert d["target"]["kind"] == "cloud" and "qwen or small" in d["reason"]
+
+
+def test_subagents_use_the_fallback_tier_too():
+    from local_fleet import delegation
+    nodes = [dict(GX, last_health=snap(status="down")), dict(MINI, last_health=snap(models=("small",)))]
+    r = delegation.route({}, tiered(), nodes)
+    assert r["label"] == "mini" and r["model"] == "small"

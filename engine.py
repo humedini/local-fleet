@@ -10,7 +10,7 @@ from .warm import warm
 from .fleet import now_iso
 from .bench import bench_node
 from .health import probe_all
-from .routing import decide, model_for, same_target
+from .routing import decide, model_for, model_tiers, same_target
 
 _lock = threading.Lock()  # one apply at a time within a process (watch + a slash command)
 SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
@@ -151,7 +151,7 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
             state["aux_applied"] = None
             return "no healthy box: side tasks back on their own settings"
         return None
-    model = model_for(node, results.get(node["id"]) or {}, settings.get("default_model") or "")
+    model = model_for(node, results.get(node["id"]) or {}, decision.get("tier_model") or "")
     want = {"tasks": tasks, "node_id": node["id"], "node_name": node["name"], "model": model}
     if current == want:
         return None
@@ -214,6 +214,7 @@ def snapshot() -> dict:
         "label": label,
         "primary": primary,
         "local_model": settings.get("default_model") or "",
+        "model_tiers": [m for m in model_tiers(settings) if m],
         "applied": applied,
         "down": bool(f.enabled()) and not healthy and applied.get("kind") != "cloud",
         "nodes": len(f.nodes),

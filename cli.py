@@ -45,8 +45,10 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("cloud", help="Show or set the cloud target used for prefer-cloud and failover")
     p.add_argument("provider", nargs="?")
     p.add_argument("model", nargs="?")
-    p = sub.add_parser("model", help="Show or set the model id to run on local nodes ('' = pick per node)")
-    p.add_argument("model", nargs="?")
+    p = sub.add_parser("model", help="Show or set the local model, and fallback models for boxes without it")
+    p.add_argument("model", nargs="?", help="main local model ('' = each box's own)")
+    p.add_argument("--fallback", action="append", help="a lower-tier model, used when no box has the main one; repeatable")
+    p.add_argument("--no-fallback", action="store_true", help="clear the fallback models")
     p = sub.add_parser("bench", help="Measure generation speed (tokens/sec) on each box")
     p.add_argument("node", nargs="*", help="ids or names (default: every enabled box)")
     p.add_argument("--load", action="store_true", help="Load the model if it is not in memory (slow, uses memory)")
@@ -272,7 +274,14 @@ def _dispatch(cmd: str, args) -> int:
               f"{' and added to fallback_providers' if added else ' (already on fallback_providers)'}")
         return 0
     if cmd == "model":
-        return _show_or_set("default_model", args.model, "local model")
+        if args.model is not None:
+            store.write_setting("default_model", args.model)
+        if args.fallback or args.no_fallback:
+            store.write_setting("fallback_models", [] if args.no_fallback else args.fallback)
+        s = store.read_settings()
+        tiers = [s["default_model"] or "(each box's own)"] + list(s.get("fallback_models") or [])
+        print("local models, in order: " + " → ".join(tiers) + " → cloud")
+        return 0
     if cmd == "bench":
         nodes, out = engine.bench(args.node or None, load=args.load)
         for n in nodes:

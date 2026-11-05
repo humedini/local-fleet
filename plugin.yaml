@@ -57,6 +57,11 @@ config_schema:
     default: ""
     label: Local model
     description: Model id to run on local nodes; nodes without it are skipped. Empty picks one per node.
+  fallback_models:
+    type: list
+    default: []
+    label: Fallback models
+    description: Lower-tier local models, in order, used on boxes without the main model when no box has it (e.g. ["qwen3:14b"])
   probe_timeout_s:
     type: float
     default: 2.0

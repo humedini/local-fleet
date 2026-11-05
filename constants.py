@@ -17,6 +17,8 @@ DEFAULTS = {
     "failback_enabled": True,
     "prefer_labels": [],
     "default_model": "",
+    # Lower tiers, in order: used on boxes without default_model when no box has it.
+    "fallback_models": [],
     # How much freer (load_proxy, 0..1) another node must be before a healthy active node is
     # swapped out. Stops two equally idle boxes trading places on every watch tick.
     "switch_margin": 0.25,

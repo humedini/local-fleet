@@ -112,6 +112,7 @@ const CSS = `
 .hs-models{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .hs-models span{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-tertiary,rgba(127,127,127,.12));color:var(--ui-text-secondary)}
 .hs-models span[data-want=true]{color:#000;background:${SPARK_GREEN}}
+.hs-models span[data-fallback=true]{color:${SPARK_GREEN};box-shadow:inset 0 0 0 1px color-mix(in srgb,${SPARK_GREEN} 60%,transparent)}
 .hs-section{margin:18px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-tertiary)}
 .hs-timeline{display:flex;flex-direction:column;border-left:1px solid var(--ui-stroke-tertiary);margin-left:6px}
 .hs-ev{position:relative;padding:4px 0 6px 14px;font-size:12px}
@@ -199,17 +200,19 @@ function chip(s, failed) {
   return { tone: '', text: `fleet · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
 }
 
-function NodeRow({ node, active, freest, want }) {
+function NodeRow({ node, active, freest, want, s }) {
   const h = node.last_health || {}
   const off = node.enabled === false
   const load = typeof h.load_proxy === 'number' ? h.load_proxy : null
-  const missing = want && h.status && h.status !== 'down' && !(h.models || []).includes(want)
+  const tier = s ? tierOf(node, s) : 0
+  const missing = s ? skipped(node, s) : (want && h.status && h.status !== 'down' && !(h.models || []).includes(want))
   const tone = off || missing ? '' : h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : h.status === 'down' ? 'bad' : ''
   let sub
   if (off) sub = 'disabled'
   else if (h.status === 'down') sub = h.detail || 'down'
   else if (!h.status) sub = 'not probed yet'
-  else if (missing) sub = `skipped · no ${want}`
+  else if (missing) sub = `skipped · has none of your models`
+  else if (tier > 0) sub = `fallback · ${s.model_tiers[tier]}${(node.perf || {}).model === s.model_tiers[tier] && speed(node) ? ' · ' + speed(node) : ''}`
   else {
     const bits = [load === null ? 'load unknown' : load < 0.05 ? 'idle' : `${Math.round(load * 100)}% busy`]
     if (speed(node)) bits.push(speed(node))
@@ -261,7 +264,7 @@ function Panel({ ctx, status }) {
     ] }),
     jsxs('div', { className: 'hs-route', title: `${lead}${strong}${tail}`, children: [lead, jsx('b', { children: strong }), tail] }),
     jsx('div', { className: 'hs-list', children: (s.nodes || []).length
-      ? s.nodes.map(n => jsx(NodeRow, { node: n, active: n.id === activeId, freest: n.id === freestId, want: s.local_model }, n.id))
+      ? s.nodes.map(n => jsx(NodeRow, { node: n, active: n.id === activeId, freest: n.id === freestId, want: s.local_model, s }, n.id))
       : jsx('div', { className: 'hs-error', children: 'No boxes yet. In a terminal: hermes fleet add --name gx10 --url http://<host>:11434/v1' }) }),
     jsxs('div', { className: 'hs-controls', children: [
       jsx('div', { className: 'hs-seg', role: 'radiogroup', 'aria-label': 'Routing mode', children: MODES.map(([m, label]) =>
@@ -325,10 +328,18 @@ function nodeTone(n) {
   return h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : h.status === 'down' ? 'bad' : 'off'
 }
 
-// Healthy but not a candidate: it lacks the local model every route needs.
+// The tier a healthy box serves: 0 = the main model, 1+ = a fallback model, -1 = none of them.
+function tierOf(n, s) {
+  const tiers = s.model_tiers && s.model_tiers.length ? s.model_tiers : (s.local_model ? [s.local_model] : [])
+  if (!tiers.length) return 0
+  const models = (n.last_health || {}).models || []
+  return tiers.findIndex(m => models.includes(m))
+}
+
+// Healthy but not a candidate: it has none of the local models routes use.
 function skipped(n, s) {
   const h = n.last_health || {}
-  return Boolean(s.local_model && h.status && h.status !== 'down' && !(h.models || []).includes(s.local_model))
+  return Boolean(h.status && h.status !== 'down' && tierOf(n, s) < 0)
 }
 
 const TONE_FILL = { ok: 'var(--ui-green,#3fb950)', warn: 'var(--ui-orange,#df6500)', bad: 'var(--ui-red,#e5484d)', off: 'var(--ui-text-quaternary)' }
@@ -463,9 +474,11 @@ function FleetMap({ s }) {
       const active = a.kind === 'local' && a.node_id === n.id
       const tone = skipped(n, s) ? 'off' : nodeTone(n)
       const { x, y } = pos[i]
-      const missing = s.local_model && h.status && h.status !== 'down' && !(h.models || []).includes(s.local_model)
+      const missing = skipped(n, s)
+      const tier = tierOf(n, s)
       const resident = (h.resident || []).slice(0, 2).join(', ')
-      const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `no ${s.local_model}`
+      const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `none of ${(s.model_tiers || [s.local_model]).join(', ')}`
+        : tier > 0 ? [`fallback · ${s.model_tiers[tier]}`, (n.perf || {}).model === s.model_tiers[tier] ? speed(n) : null].filter(Boolean).join(' · ')
         : [speed(n) || (h.latency_ms != null ? `${h.latency_ms} ms` : null), typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
            h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
       return jsxs('g', { children: [
@@ -517,7 +530,9 @@ function NodeCard({ n, s }) {
     })(),
     jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
     jsx(Sparkline, { points: (s.series || {})[n.id] }),
-    jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', { 'data-want': m === want, title: m, children: m }, m)) })
+    jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', {
+      'data-want': m === want, 'data-fallback': (s.model_tiers || []).slice(1).includes(m),
+      title: m === want ? `${m} (your main model)` : (s.model_tiers || []).includes(m) ? `${m} (fallback model)` : m, children: m }, m)) })
   ] })
 }
 

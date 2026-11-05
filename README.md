@@ -56,6 +56,14 @@ Every kind answers `GET {base}/models`, which decides up or down and gives laten
 
 Lowest load wins, then preferred labels (`prefer_labels`), then most free memory, then latency, then name. If you set a local model (`hermes fleet model`), boxes that do not serve it are skipped. A box whose models answer but whose load endpoint fails is *degraded* and still routable.
 
+### Fallback models
+
+```bash
+hermes fleet model qwen3.6:35b-a3b-64k --fallback qwen3:14b
+```
+
+Boxes that cannot hold your main model can still help: with fallback models set, Local Fleet uses the least busy box with the main model; when no box has it, the least busy box with the first fallback model, and so on; cloud only after that. When a box with the main model comes back, Hermes moves back to it. Subagents and side tasks follow the same order. `--no-fallback` clears the list.
+
 ### Speed
 
 `hermes fleet bench` runs a short generation (64 tokens) on each box and records tokens per second. For Ollama it uses Ollama's own timings (exact decode and prompt-processing speed); for other kinds it times a streamed reply. It only uses a model the box already has in memory, and skips busy boxes, so a bench never loads tens of GB behind your back; `--load` allows loading. `hermes fleet watch`, the start of a session and the Desktop's **Benchmark** button re-bench boxes whose figure is older than `bench_interval_s` (15 minutes; 0 turns it off). When two boxes are equally free, the one that was faster on the model being routed wins.
@@ -144,7 +152,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet use <box> \| --best` | switch Hermes to a box now, or to the least busy one |
 | `hermes fleet mode [prefer-local\|prefer-cloud\|auto]` | show or set the mode |
 | `hermes fleet cloud [<provider> <model>]` | show or set the cloud target |
-| `hermes fleet model [<id>]` | show or set the local model |
+| `hermes fleet model [<id>] [--fallback <id>]… [--no-fallback]` | the local model, and fallback models for smaller boxes |
 | `hermes fleet watch [--interval s] [--once]` | keep routing current |
 | `hermes fleet bench [<box>…] [--load]` | measure generation speed (tokens/sec) |
 | `hermes fleet set <box> [--vendor] [--os] [--label] [--capacity-gb]` | platform (for the Desktop icons), labels, capacity |

@@ -17,7 +17,7 @@ import time
 from . import store
 from .fleet import now_iso
 from .health import routable, score
-from .routing import model_for
+from .routing import choose_tier, model_for
 
 NAME = "fleet"
 WHERE = ("any", "local", "cloud")
@@ -45,8 +45,8 @@ def route(task: dict, settings: dict, nodes: list[dict], secret=None) -> dict:
     where = task.get("where") or "any"
     if where == "cloud":
         return _cloud(settings)
-    want = settings.get("default_model") or ""
     labels = settings.get("prefer_labels") or ()
+    want, _tier = choose_tier(nodes, {n["id"]: n.get("last_health") for n in nodes}, settings)
     healthy = [n for n in nodes if n.get("enabled", True) and routable(n, n.get("last_health"), want)]
     if not healthy:
         if where == "local":
