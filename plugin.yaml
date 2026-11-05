@@ -26,7 +26,6 @@ config_keys:
   - model.base_url
   - model.api_mode
   - model.key_env
-  - fallback_providers
 
 config_schema:
   mode:

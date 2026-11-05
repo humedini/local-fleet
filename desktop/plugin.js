@@ -87,25 +87,34 @@ function Panel({ ctx, status }) {
   ] })
 }
 
+function Unreachable({ error, onRetry }) {
+  return jsxs('div', { className: 'flex w-72 flex-col gap-2 p-2 text-xs', children: [
+    jsx('span', { className: 'font-medium', style: { color: SPARK_GREEN }, children: 'Spark fleet' }),
+    jsx('div', { children: 'The hermes-spark backend did not answer.' }),
+    jsx('div', { className: 'break-words text-(--ui-text-tertiary)', children: String((error && error.message) || error || 'unknown error') }),
+    jsx('div', { className: 'text-(--ui-text-tertiary)', children: 'Check the plugin is enabled (hermes plugins enable hermes-spark) and restart the gateway.' }),
+    jsx(Button, { size: 'micro', onClick: onRetry, children: 'Retry' })
+  ] })
+}
+
 function Chip({ ctx }) {
   const [open, setOpen] = useState(false)
   const q = useQuery({ queryKey: KEY, queryFn: () => ctx.rest('/status'), refetchInterval: 15000, retry: 1, staleTime: 5000 })
-  if (q.isError) {
-    // Backend half not loaded (plugin disabled for the agent, or an older gateway): stay quiet.
-    return jsx('span', { className: 'px-1.5 text-[0.6875rem] text-(--ui-text-tertiary)', title: 'Enable hermes-spark and restart the gateway', children: 'spark · off' })
-  }
   const s = q.data
+  const failed = q.isError && !s
   const local = s && !s.down && s.applied && s.applied.kind === 'local'
+  const dot = failed || (s && s.down) ? 'var(--ui-destructive, #df6500)' : local ? SPARK_GREEN : 'var(--ui-text-tertiary)'
   return jsxs(Popover, { open, onOpenChange: setOpen, children: [
     jsx(PopoverTrigger, { asChild: true, children: jsxs(Button, {
       variant: 'ghost', size: 'micro', 'aria-label': 'Spark fleet', className: 'gap-1.5 text-[0.6875rem]',
       children: [
-        jsx('span', { 'aria-hidden': true, style: { width: 6, height: 6, borderRadius: 999, display: 'inline-block',
-          background: s && s.down ? 'var(--ui-destructive, #df6500)' : local ? SPARK_GREEN : 'var(--ui-text-tertiary)' } }),
-        jsx('span', { children: chipText(s) })
+        jsx('span', { 'aria-hidden': true, style: { width: 6, height: 6, borderRadius: 999, display: 'inline-block', background: dot } }),
+        jsx('span', { children: failed ? 'spark · unreachable' : chipText(s) })
       ]
     }) }),
-    jsx(PopoverContent, { side: 'top', align: 'end', 'aria-label': 'Spark fleet', children: jsx(Panel, { ctx, status: s }) })
+    jsx(PopoverContent, { side: 'top', align: 'end', 'aria-label': 'Spark fleet', children: failed
+      ? jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() })
+      : jsx(Panel, { ctx, status: s }) })
   ] })
 }
 
