@@ -61,3 +61,9 @@ def test_bench_keeps_the_models_remaining_idle_time():
     bench_node(OL, dict(snap(), expires={"gemma": at}), "")
     sent = json.loads(route.calls.last.request.content)["keep_alive"]
     assert sent.endswith("s") and 290 <= int(sent[:-1]) <= 300
+
+
+def test_bench_uses_the_first_tier_the_box_has():
+    s = snap(models=("small", "other"), resident=("other",))
+    assert pick_model(OL, s, ["big", "small"], load=True) == ("small", "")
+    assert pick_model(OL, s, ["big", "small"], load=False) == ("other", "")   # never cold-loads uninvited

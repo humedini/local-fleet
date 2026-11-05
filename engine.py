@@ -41,7 +41,7 @@ def _age_s(iso: str | None) -> float:
 
 def run_bench(f, results: dict, settings: dict, nodes: list[dict], load: bool = False) -> dict:
     """Bench `nodes` in parallel (different machines) and record what came back."""
-    want = settings.get("default_model") or ""
+    want = [m for m in model_tiers(settings) if m]
     if not nodes:
         return {}
     with ThreadPoolExecutor(max_workers=min(4, len(nodes))) as pool:

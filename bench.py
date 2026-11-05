@@ -27,12 +27,15 @@ MAX_TOKENS = 64
 BUSY = 0.5  # load_proxy above which a box is left alone
 
 
-def pick_model(node: dict, snap: dict, want: str, load: bool) -> tuple[str, str]:
-    """(model, reason-if-none)."""
+def pick_model(node: dict, snap: dict, want, load: bool) -> tuple[str, str]:
+    """(model, reason-if-none). `want` is a model or the tiers in order: the first tier the box
+    has (in memory, or loadable with `load`) is benched, so speeds are for models routing uses."""
     models = snap.get("models") or []
     resident = snap.get("resident") or []
-    if want and want in models and (want in resident or load or node.get("kind") != "ollama"):
-        return want, ""
+    tiers = [w for w in ([want] if isinstance(want, str) else list(want or [])) if w]
+    for w in tiers:
+        if w in models and (w in resident or load or node.get("kind") != "ollama"):
+            return w, ""
     if node.get("kind") == "ollama":
         chat = [m for m in resident if "embed" not in m.lower()]
         if chat:
