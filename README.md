@@ -239,6 +239,21 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - **Credentials**: none stored. Optional per-box keys are read by env var name through Hermes's secret resolver.
 - **Plain HTTP**: Ollama and vLLM usually serve plain HTTP. `doctor` warns if a box's URL is plain HTTP to a public address; keep boxes on your LAN, a tailnet or behind TLS.
 
+## How it differs
+
+- **A standalone plugin, not a core change.** An earlier in-tree `hermes dgx` proposal (hermes-agent PR #28009) was closed in favour of plugins; Local Fleet ships as one.
+- **Hermes keeps its own fallback chain.** Local Fleet chooses the primary between turns; core `fallback_providers` still handles a failure within a turn. No second fallback engine.
+- **A live fleet, not a skin.** Health, load, memory and speed per box, routing that acts on them, and a Desktop page that shows it. (The optional DGX Spark theme is a bonus; themed skins already exist elsewhere.)
+
+## Known limitations (v0.1.0)
+
+- Continuous switching needs `hermes fleet watch` running (see *Keeping it current*).
+- If loading a model on the new box fails during a switch, the switch still happens and the toast says why; it does not yet try the next box instead.
+- `hermes fleet doctor` checks the main model only, not the fallback tiers, and does not check that the plugin is enabled.
+- Load for Ollama boxes counts models in memory; it cannot see other GPU work (training jobs). Speeds are snapshots.
+- Clusters are shown and routed, not created; the interconnect label is what you declare.
+- On Windows the file lock only covers threads of one process.
+
 ## Not in scope
 
 Starting or stopping inference servers, multi-box model sync, NVIDIA NIM management, mixture-of-agents. local-fleet routes between servers you already run.
