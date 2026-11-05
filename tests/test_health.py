@@ -124,3 +124,11 @@ def test_vllm_new_metric_name_and_queue():
     respx.get("http://vl:8000/v1/models").respond(json=models("m"))
     respx.get("http://vl:8000/metrics").respond(text='vllm:kv_cache_usage_perc{m="m"} 0.3\nvllm:num_requests_waiting{m="m"} 2\n')
     assert probe_all([VL])["c"]["load_proxy"] == 0.8
+
+
+@respx.mock
+def test_detail_names_the_fallback_tier():
+    respx.get("http://s2:11434/v1/models").respond(json=models("small"))
+    respx.get("http://s2:11434/api/ps").respond(json=ps())
+    assert probe_all([S2], want=["big", "small"])["b"]["detail"] == "ok · fallback small"
+    assert probe_all([S2], want=["big"])["b"]["detail"] == "ok, but no big"

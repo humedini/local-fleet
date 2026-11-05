@@ -56,7 +56,7 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     settings = settings or store.read_settings()
     f = store.fleet()
     results = probe_all(f.enabled(), timeout=float(settings["probe_timeout_s"]),
-                        want=settings.get("default_model") or "")
+                        want=[m for m in model_tiers(settings) if m])
     f.record_health(results)
     if auto_bench:
         run_bench(f, results, settings, _due_for_bench(f, settings))

@@ -101,7 +101,17 @@ def _vllm_load(client, node, want):
 _LOAD = {"ollama": _ollama_load, "vllm": _vllm_load}
 
 
-def probe_node(node: dict, client: httpx.Client, want: str = "") -> dict:
+def _detail(models: list[str], want) -> str:
+    """'ok', or which tier the box serves when it lacks the main model. `want` is a model or a
+    list of models in preference order."""
+    tiers = [w for w in ([want] if isinstance(want, str) else list(want or [])) if w]
+    if not tiers or tiers[0] in models:
+        return "ok"
+    fallback = next((m for m in tiers[1:] if m in models), None)
+    return f"ok · fallback {fallback}" if fallback else f"ok, but no {' or '.join(tiers)}"
+
+
+def probe_node(node: dict, client: httpx.Client, want="") -> dict:
     """Probe one node. Never raises: failures become a `down` snapshot with the reason."""
     t0 = time.monotonic()
     try:
@@ -115,7 +125,8 @@ def probe_node(node: dict, client: httpx.Client, want: str = "") -> dict:
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         return _snapshot("down", None, f"{type(e).__name__}: {e}"[:120])
     latency = round((time.monotonic() - t0) * 1000)
-    detail = f"ok, but no {want}" if want and want not in models else "ok"
+    detail = _detail(models, want)
+    want = want if isinstance(want, str) else (want[0] if want else "")
     loader = _LOAD.get(node.get("kind"))
     if loader is None:
         return _snapshot("ok", latency, detail, models)
@@ -128,7 +139,7 @@ def probe_node(node: dict, client: httpx.Client, want: str = "") -> dict:
     return snap
 
 
-def probe_all(nodes: list[dict], timeout: float = 2.0, want: str = "",
+def probe_all(nodes: list[dict], timeout: float = 2.0, want="",
               transport: httpx.BaseTransport | None = None) -> dict[str, dict]:
     """Probe nodes in parallel; returns {node_id: snapshot}."""
     if not nodes:

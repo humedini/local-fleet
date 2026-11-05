@@ -27,6 +27,8 @@ def run() -> tuple[bool, list[str]]:
         extra = f" {h['latency_ms']}ms" if h.get("latency_ms") is not None else ""
         extra += f" load={h['load_proxy']:g}" if h.get("load_proxy") is not None else ""
         detail = "" if h.get("detail", "").startswith("ok") else f" {h.get('detail', '')}"
+        if h.get("detail", "").startswith("ok · fallback "):
+            detail = " " + h["detail"][5:]
         has = ""
         if want and h.get("status") in ("ok", "degraded"):
             has = f"  has {want}" if want in h.get("models", []) else f"  no {want} (skipped)"
