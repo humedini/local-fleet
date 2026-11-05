@@ -11,7 +11,7 @@ import httpx
 from .health import node_headers, origin
 
 
-def warm(node: dict, model: str, resident: list[str], timeout: float = 120.0, keep_alive: str = "30m",
+def warm(node: dict, model: str, resident: list[str], timeout: float = 120.0, keep_alive: str | int = "30m",
          transport: httpx.BaseTransport | None = None, refresh: bool = False) -> dict:
     """{"warmed": bool, "detail": str}. Never raises. `refresh` also sends `keep_alive` to a model
     already in memory (Ollama then only resets its unload timer; nothing reloads)."""
@@ -26,6 +26,8 @@ def warm(node: dict, model: str, resident: list[str], timeout: float = 120.0, ke
             r.raise_for_status()
         return {"warmed": True, "detail": f"loaded {model}"}
     except httpx.TimeoutException:
-        return {"warmed": False, "detail": f"still loading after {timeout:.0f}s; switched anyway"}
+        return {"warmed": False, "detail": f"still loading after {timeout:.0f}s"}
+    except httpx.HTTPStatusError as e:
+        return {"warmed": False, "detail": f"Ollama refused the load (HTTP {e.response.status_code})"}
     except (httpx.HTTPError, ValueError) as e:
-        return {"warmed": False, "detail": f"warm failed ({type(e).__name__}); switched anyway"}
+        return {"warmed": False, "detail": f"load failed ({type(e).__name__})"}

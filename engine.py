@@ -183,7 +183,7 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     return f"side tasks → {node['name']} · {model}"
 
 
-FOREVER = "-1"   # Ollama keep_alive: never unload
+FOREVER = -1     # Ollama keep_alive: never unload (a number: "-1" as text is rejected, it has no unit)
 RELEASE = "5m"   # back to a normal idle timer
 
 

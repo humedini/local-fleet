@@ -147,7 +147,7 @@ def test_keep_loaded_holds_the_routed_model_and_releases_it(hermes):  # noqa: F8
     store.write_setting("keep_loaded", True)
     engine.apply_policy()
     calls = [json.loads(c.request.content) for c in respx.calls if c.request.url.path == "/api/generate"]
-    assert any(c.get("keep_alive") == "-1" and c["model"] == "qwen" for c in calls)
+    assert any(c.get("keep_alive") == -1 and c["model"] == "qwen" for c in calls)   # a number, not "-1"
     assert store.load_state()["applied"]["kept"] is True
     respx.calls.reset()
     engine.set_keep(False)                                  # hands it back to a normal timer
