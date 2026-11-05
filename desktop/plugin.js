@@ -92,6 +92,7 @@ const CSS = `
 .hs-toggle[aria-checked=true] i::after{transform:translateX(12px);background:#000}
 .hs-wire[data-cloud=true][data-live=true]{stroke:var(--ui-orange,#df6500)}
 @keyframes hs-flow{to{stroke-dashoffset:-28}}
+.hs-link-live{animation:hs-flow 0.5s linear infinite;filter:drop-shadow(0 0 4px color-mix(in srgb,${SPARK_GREEN} 70%,transparent))}
 .hs-led{animation:hs-blink 1.8s ease-in-out infinite}
 .hs-led:nth-child(2n){animation-delay:.6s}
 .hs-led:nth-child(3n){animation-delay:1.1s}
@@ -108,6 +109,15 @@ const CSS = `
 .hs-card-perf{font-size:11px;color:var(--ui-text-tertiary);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-card-perf b{font-size:16px;font-weight:600;color:var(--ui-text-primary);font-variant-numeric:tabular-nums}
 .hs-mem{margin:8px 0 2px}
+.hs-card[data-cluster=true]{grid-column:span 2}
+@container (max-width:560px){.hs-card[data-cluster=true]{grid-column:auto}}
+.hs-cluster-members{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.hs-mem-who{font-size:11px;font-weight:600;margin-top:8px;color:var(--ui-text-secondary)}
+.hs-name-btn{all:unset;cursor:pointer;display:inline-flex;align-items:baseline;gap:6px;min-width:0}
+.hs-name-btn small{font-size:10.5px;font-weight:400;color:var(--ui-text-quaternary)}
+.hs-name-btn i{font-style:normal;font-size:11px;color:var(--ui-text-quaternary);opacity:0;transition:opacity .15s}
+.hs-name-btn:hover i,.hs-name-btn:focus-visible i{opacity:1}
+.hs-name-input{font:inherit;font-weight:600;background:var(--ui-bg-tertiary,#1b1b20);color:var(--ui-text-primary);border:1px solid ${SPARK_GREEN};border-radius:5px;padding:1px 6px;width:170px}
 .hs-mem-head{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--ui-text-tertiary)}
 .hs-mem-head b{font-weight:600;color:var(--ui-text-primary)}
 .hs-mem-bar{display:flex;height:8px;margin:4px 0 3px;border-radius:999px;background:var(--ui-stroke-tertiary);overflow:hidden;gap:1px}
@@ -177,6 +187,10 @@ function Marks({ n, size = 14 }) {
     jsx('svg', { width: size, height: size, viewBox: '0 0 16 16', children: jsx(Mark, { kind: k, title: t }) }, k)) })
 }
 
+function dname(n) {
+  return (n && (n.title || n.name)) || ''
+}
+
 function speed(n) {
   const p = n.perf || {}
   return p.tps ? `${p.tps >= 100 ? Math.round(p.tps) : p.tps} tok/s` : ''
@@ -212,7 +226,7 @@ function ago(iso) {
 
 function routeLine(s) {
   const a = s.applied || {}
-  if (a.kind === 'local') return ['Routed to ', a.node_name, ` · ${a.model || ''}`]
+  if (a.kind === 'local') return ['Routed to ', dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name, ` · ${a.model || ''}`]
   if (a.kind === 'cloud') return ['Routed to cloud ', `${a.provider}/${a.model}`, a.via === 'failover' ? ' · failover' : '']
   const p = s.primary || {}
   return ['Not routed by Local Fleet · Hermes uses ', p.provider || 'its own primary', p.default ? ` · ${p.default}` : '']
@@ -224,7 +238,7 @@ function chip(s, failed) {
   if (!s.nodes || !s.nodes.length) return { tone: '', text: 'fleet · no boxes' }
   const a = s.applied || {}
   if (s.down) return { tone: 'bad', text: 'fleet · all down' }
-  if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${a.node_name}` }
+  if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name}` }
   if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'fleet · cloud' }
   return { tone: '', text: `fleet · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
 }
@@ -252,7 +266,7 @@ function NodeRow({ node, active, freest, want, s }) {
     jsx('span', { className: 'hs-dot', 'data-tone': tone }),
     jsxs('div', { className: 'hs-name', children: [
       jsx(Marks, { n: node, size: 13 }),
-      jsx('span', { children: node.name }),
+      jsx('span', { children: dname(node) }),
       active && jsx('em', { className: 'hs-badge', 'data-kind': 'active', style: { fontStyle: 'normal' }, children: 'active' }),
       !active && freest && jsx('em', { className: 'hs-badge', 'data-kind': 'freest', style: { fontStyle: 'normal' }, children: 'least busy' })
     ] }),
@@ -475,51 +489,119 @@ function money(s, v) {
   }
 }
 
+function boxLine(n, s) {
+  const h = n.last_health || {}
+  const tier = tierOf(n, s)
+  if (n.enabled === false) return 'disabled'
+  if (h.status === 'down') return h.detail || 'down'
+  if (skipped(n, s)) return `none of ${(s.model_tiers || [s.local_model]).join(', ')}`
+  if (tier > 0) return [`fallback · ${s.model_tiers[tier]}`, (n.perf || {}).model === s.model_tiers[tier] ? speed(n) : null].filter(Boolean).join(' · ')
+  return [speed(n) || (h.latency_ms != null ? `${h.latency_ms} ms` : null),
+    typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
+    n.capacity_gb && h.used_bytes != null ? `${gb(h.used_bytes)}/${n.capacity_gb} GB` : h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
+}
+
+function residentLine(n) {
+  const res = ((n.last_health || {}).resident || []).filter(m => !/embed/i.test(m))
+  const r = res.length ? res[0] + (res.length > 1 ? ` +${res.length - 1}` : '') : ''
+  return r ? `in memory: ${r.length > 26 ? r.slice(0, 25) + '…' : r}` : ''
+}
+
+// Map items: every cluster, plus every box that is not a member of one (members are drawn inside
+// their cluster's rack).
+function mapItems(nodes) {
+  const inCluster = new Set(nodes.flatMap(n => n.members || []))
+  return nodes.filter(n => (n.members || []).length || !inCluster.has(n.id))
+}
+
+function clusterTotals(c, byId) {
+  const ms = (c.members || []).map(id => byId[id]).filter(Boolean)
+  const sum = k => ms.reduce((t, m) => t + (m[k] || 0), 0)
+  return { members: ms, memory: sum('memory_gb'), forAi: sum('capacity_gb') }
+}
+
+function Labels({ x, y, n, s, active, extra }) {
+  const marks = marksFor(n)
+  const lines = [boxLine(n, s), ...(extra || []), residentLine(n)].filter(Boolean)
+  return jsxs('g', { children: [
+    jsx('circle', { cx: x - 8, cy: y - 22, r: 3.5, fill: active ? SPARK_GREEN : TONE_FILL[skipped(n, s) ? 'off' : nodeTone(n)] }),
+    ...marks.map(([k, t], j) => jsx(Mark, { kind: k, title: t, x: x + j * 19, y: y - 31, size: 16 }, k)),
+    jsx('text', { x: x + 2 + marks.length * 19, y: y - 18, style: { fontWeight: 600 }, children: dname(n) + (active ? '  ← routed' : '') }),
+    ...lines.map((t, j) => jsx('text', { className: 't2', x, y: y - 3 + j * 14, children: t }, j)),
+    liveCalls(s, n) > 0 && jsx('text', { className: 't2', x, y: y - 3 + lines.length * 14, style: { fill: '#6ee7ff' },
+      children: `● live · ${liveCalls(s, n)} call${liveCalls(s, n) === 1 ? '' : 's'}${recentDelegation(s, n) ? ' · subagents' : ''}` })
+  ] })
+}
+
+// A cluster: its members side by side in a rack, joined by the interconnect. When Hermes is routed
+// to it, the link pulses too: one model, split across the boxes.
+const CLUSTER_STEP = 150  // spacing of members in a rack; leaves room for the link between them
+
+function ClusterRack({ c, s, x, y, byId, active, live, reduced }) {
+  const { members, memory, forAi } = clusterTotals(c, byId)
+  const step = CLUSTER_STEP
+  const left = x - (step * (members.length - 1)) / 2
+  const xs = members.map((_, i) => left + i * step)
+  const rack = { x: xs[0] - 66, y: y - 62, w: xs[xs.length - 1] - xs[0] + 132, h: 112 }
+  const linkY = y + 6
+  const linkD = xs.length > 1 ? `M${xs[0] + 48} ${linkY} L${xs[xs.length - 1] - 48} ${linkY}` : ''
+  const linkId = `hs-link-${c.id}`
+  const busy = active || live
+  const extra = [`${members.length} boxes${c.link ? ` · ${c.link}` : ''}${memory ? ` · ${memory} GB` : ''}${forAi ? ` (${forAi} for AI)` : ''}`]
+  return jsxs('g', { children: [
+    jsx('rect', { x: rack.x, y: rack.y, width: rack.w, height: rack.h, rx: 12, fill: 'none',
+      stroke: active ? SPARK_GREEN : 'var(--ui-stroke-secondary)', strokeDasharray: active ? undefined : '4 4', strokeWidth: active ? 1.5 : 1 }),
+    jsx('text', { className: 't3', x: rack.x + 10, y: rack.y + 14, children: (c.title || c.name).toUpperCase() }),
+    ...members.map((m, i) => jsx(IsoServer, { x: xs[i], y, tone: nodeTone(m) === 'off' ? 'off' : nodeTone(c), active: active, load: (c.last_health || {}).load_proxy }, m.id)),
+    linkD && jsx('path', { id: linkId, d: linkD, fill: 'none', stroke: busy ? SPARK_GREEN : 'var(--ui-stroke-secondary)', strokeWidth: 4, strokeLinecap: 'round',
+      strokeDasharray: busy ? '2 7' : undefined, className: busy && !reduced ? 'hs-link-live' : undefined }),
+    linkD && c.link && jsx('text', { className: 't2', x: (xs[0] + xs[xs.length - 1]) / 2, y: rack.y + rack.h - 9, textAnchor: 'middle', children: c.link }),
+    ...members.map((m, i) => jsx('text', { className: 't2', x: xs[i], y: y + 62, textAnchor: 'middle', children: dname(m) }, `n-${m.id}`)),
+    jsx(Labels, { x: rack.x + rack.w + 18, y: y - 8, n: c, s, active, extra })
+  ] })
+}
+
 function FleetMap({ s }) {
   const nodes = s.nodes || []
-  const pos = nodePositions(nodes.length)
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]))
+  const items = mapItems(nodes)
+  const pos = nodePositions(items.length)
   const a = s.applied || {}
   const cloudLive = a.kind === 'cloud'
   const reduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const hubEdge = { x: HUB.x + 46, y: HUB.y }
   const cloudPath = `M${HUB.x} ${HUB.y - 46} L${CLOUD.x} ${CLOUD.y + 16}`
+  // An item is active when Hermes is routed to it, or (for a cluster) to one of its members.
+  const activeOf = n => a.kind === 'local' && (a.node_id === n.id || (n.members || []).includes(a.node_id))
+  const isCluster = n => (n.members || []).length > 0
+  const wireEnd = (n, p) => isCluster(n)
+    ? { x: p.x - (CLUSTER_STEP * (n.members.length - 1)) / 2 - 70, y: p.y + 4 }
+    : { x: p.x - 50, y: p.y + 4 }
   return jsx('div', { className: 'hs-map', children: jsxs('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Local Fleet map', children: [
     jsx('path', { id: 'hs-wire-cloud', className: 'hs-wire', 'data-cloud': true, 'data-live': cloudLive, d: cloudPath }),
     cloudLive && !reduced && Packets({ id: 'hs-wire-cloud', color: 'var(--ui-orange,#df6500)' }),
-    ...nodes.map((n, i) => {
-      const active = a.kind === 'local' && a.node_id === n.id
+    ...items.map((n, i) => {
+      const active = activeOf(n)
       const tone = skipped(n, s) ? 'off' : nodeTone(n)
-      const end = { x: pos[i].x - 50, y: pos[i].y + 4 }
       const id = `hs-wire-${n.id}`
       const busy = !active && liveCalls(s, n) > 0
       return jsxs('g', { children: [
-        jsx('path', { id, className: 'hs-wire', 'data-live': active, 'data-traffic': busy, 'data-off': !busy && (tone === 'off' || tone === 'bad'), d: wirePath(hubEdge, end) }),
+        jsx('path', { id, className: 'hs-wire', 'data-live': active, 'data-traffic': busy, 'data-off': !busy && (tone === 'off' || tone === 'bad'), d: wirePath(hubEdge, wireEnd(n, pos[i])) }),
         (active || busy) && !reduced && Packets({ id, color: active ? SPARK_GREEN : '#6ee7ff' })
       ] }, `w-${n.id}`)
     }),
     jsx(Hub, { s }),
     jsx(Cloud, { s, live: cloudLive }),
-    ...nodes.map((n, i) => {
-      const h = n.last_health || {}
-      const active = a.kind === 'local' && a.node_id === n.id
-      const tone = skipped(n, s) ? 'off' : nodeTone(n)
+    ...items.map((n, i) => {
       const { x, y } = pos[i]
-      const missing = skipped(n, s)
-      const tier = tierOf(n, s)
-      const res = (h.resident || []).filter(m => !/embed/i.test(m))
-      const resident = res.length ? res[0] + (res.length > 1 ? ` +${res.length - 1}` : '') : ''
-      const line2 = n.enabled === false ? 'disabled' : h.status === 'down' ? (h.detail || 'down') : missing ? `none of ${(s.model_tiers || [s.local_model]).join(', ')}`
-        : tier > 0 ? [`fallback · ${s.model_tiers[tier]}`, (n.perf || {}).model === s.model_tiers[tier] ? speed(n) : null].filter(Boolean).join(' · ')
-        : [speed(n) || (h.latency_ms != null ? `${h.latency_ms} ms` : null), typeof h.load_proxy === 'number' ? (h.load_proxy < 0.05 ? 'idle' : `${Math.round(h.load_proxy * 100)}% busy`) : null,
-           n.capacity_gb && h.used_bytes != null ? `${gb(h.used_bytes)}/${n.capacity_gb} GB` : h.free_vram_approx ? `${Math.round(h.free_vram_approx / 1e9)} GB free` : null].filter(Boolean).join(' · ')
+      const active = activeOf(n)
+      if (isCluster(n)) {
+        return jsx(ClusterRack, { c: n, s, x, y, byId, active, live: liveCalls(s, n) > 0, reduced }, n.id)
+      }
+      const tone = skipped(n, s) ? 'off' : nodeTone(n)
       return jsxs('g', { children: [
-        jsx(IsoServer, { x, y, tone, active, load: h.load_proxy }),
-        jsx('circle', { cx: x + 62, cy: y - 22, r: 3.5, fill: active ? SPARK_GREEN : TONE_FILL[tone] }),
-        ...marksFor(n).map(([k, t], j) => jsx(Mark, { kind: k, title: t, x: x + 70 + j * 19, y: y - 31, size: 16 }, k)),
-        jsx('text', { x: x + 72 + marksFor(n).length * 19, y: y - 18, style: { fontWeight: 600 }, children: n.name + (active ? '  ← routed' : '') }),
-        jsx('text', { className: 't2', x: x + 70, y: y - 3, children: line2 }),
-        resident && jsx('text', { className: 't2', x: x + 70, y: y + 11, children: `in memory: ${resident.length > 26 ? resident.slice(0, 25) + '…' : resident}` }),
-        liveCalls(s, n) > 0 && jsx('text', { className: 't2', x: x + 70, y: y + 25, style: { fill: '#6ee7ff' }, children: `● live · ${liveCalls(s, n)} call${liveCalls(s, n) === 1 ? '' : 's'}${recentDelegation(s, n) ? ' · subagents' : ''}` })
+        jsx(IsoServer, { x, y, tone, active, load: (n.last_health || {}).load_proxy }),
+        jsx(Labels, { x: x + 70, y, n, s, active })
       ] }, n.id)
     })
   ] }) })
@@ -574,16 +656,47 @@ function MemoryPanel({ n, s }) {
   ] })
 }
 
-function NodeCard({ n, s }) {
+// Click the name to rename the box; Enter saves, Escape cancels, an empty name goes back to the handle.
+function EditableName({ ctx, n }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const save = async () => {
+    setEditing(false)
+    if ((value.trim() || null) === (n.title || null)) return
+    try {
+      qc.setQueryData(KEY, await ctx.rest('/rename', { method: 'POST', body: { node: n.id, title: value.trim() } }))
+    } catch (err) {
+      host.notifyError(err, 'Rename failed')
+    }
+  }
+  if (editing) {
+    return jsx('input', { className: 'hs-name-input', autoFocus: true, value, maxLength: 40, placeholder: n.name,
+      'aria-label': `Display name for ${n.name}`, onChange: e => setValue(e.target.value), onBlur: save,
+      onKeyDown: e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) } })
+  }
+  return jsxs('button', { type: 'button', className: 'hs-name-btn', title: 'Rename', onClick: () => { setValue(n.title || ''); setEditing(true) }, children: [
+    jsx('span', { children: dname(n) }),
+    n.title && jsx('small', { children: n.name }),
+    jsx('i', { 'aria-hidden': true, children: '✎' })
+  ] })
+}
+
+function NodeCard({ n, s, ctx }) {
   const h = n.last_health || {}
+  const cluster = (n.members || []).length > 0
+  const byId = Object.fromEntries((s.nodes || []).map(x => [x.id, x]))
+  const parents = (s.nodes || []).filter(c => (c.members || []).includes(n.id))
   const active = (s.applied || {}).kind === 'local' && (s.applied || {}).node_id === n.id
   const want = s.local_model
   const models = (h.models || n.models || []).filter(m => !/embed/i.test(m))
-  return jsxs('div', { className: 'hs-card', 'data-active': active, children: [
+  return jsxs('div', { className: 'hs-card', 'data-active': active, 'data-cluster': cluster, children: [
     jsxs('div', { className: 'hs-card-head', children: [
       jsx('span', { className: 'hs-dot', 'data-tone': active ? 'spark' : { ok: 'ok', warn: 'warn', bad: 'bad' }[nodeTone(n)] || '' }),
       jsx(Marks, { n, size: 15 }),
-      jsx('span', { children: n.name }),
+      ctx ? jsx(EditableName, { ctx, n }) : jsx('span', { children: dname(n) }),
+      cluster && jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, children: `cluster · ${n.members.length} boxes${n.link ? ' · ' + n.link : ''}` }),
+      ...parents.map(c => jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, title: 'Shares its memory with this cluster', children: `in ${dname(c)}` }, c.id)),
       jsx('span', { className: 'hs-lat', children: h.latency_ms != null ? `${h.latency_ms} ms` : '' })
     ] }),
     jsxs('div', { className: 'hs-card-perf', children: [
@@ -596,7 +709,10 @@ function NodeCard({ n, s }) {
       return t ? jsx('div', { className: 'hs-card-perf', children: `real traffic: ${t.calls} calls this week${t.tps ? ` · ${t.tps} tok/s effective` : ''}${t.latency_s ? ` · ${t.latency_s}s median` : ''}${t.errors ? ` · ${t.errors} errors` : ''}` }) : null
     })(),
     jsx('div', { className: 'hs-card-sub', title: n.base_url, children: `${n.kind} · ${(n.labels || []).join(', ') || 'no labels'} · ${n.base_url}` }),
-    jsx(MemoryPanel, { n, s }),
+    cluster
+      ? jsx('div', { className: 'hs-cluster-members', children: n.members.map(id => byId[id]).filter(Boolean).map(m =>
+          jsxs('div', { children: [jsx('div', { className: 'hs-mem-who', children: dname(m) }), jsx(MemoryPanel, { n: m, s })] }, m.id)) })
+      : jsx(MemoryPanel, { n, s }),
     jsx(Sparkline, { points: (s.series || {})[n.id] }),
     jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', {
       'data-want': m === want, 'data-fallback': (s.model_tiers || []).slice(1).includes(m),
@@ -670,7 +786,7 @@ function FleetPage({ ctx }) {
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
     jsx(FleetMap, { s }),
-    jsx('div', { className: 'hs-cards', children: nodes.map(n => jsx(NodeCard, { n, s }, n.id)) }),
+    jsx('div', { className: 'hs-cards', children: nodes.slice().sort((x, y) => ((y.members || []).length > 0) - ((x.members || []).length > 0)).map(n => jsx(NodeCard, { n, s, ctx }, n.id)) }),
     jsx('div', { className: 'hs-section', children: 'Routing history' }),
     jsx(Timeline, { history: s.history })
   ] })

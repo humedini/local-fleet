@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# Test modules share fixtures by importing each other (from test_engine import hermes).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 

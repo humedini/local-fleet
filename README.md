@@ -73,6 +73,21 @@ hermes fleet model gpt-oss:120b --fallback qwen3:14b
 
 Boxes that cannot hold your main model can still help: with fallback models set, Local Fleet uses the least busy box with the main model; when no box has it, the least busy box with the first fallback model, and so on; cloud only after that. When a box with the main model comes back, Hermes moves back to it. Subagents and side tasks follow the same order. `--no-fallback` clears the list.
 
+### Clusters
+
+Several boxes linked to serve one big model (two DGX Sparks over their 200 GbE ConnectX-7 ports running vLLM with Ray, or llama.cpp RPC) still answer on one endpoint, the head node's. Register that endpoint as a cluster:
+
+```bash
+hermes fleet cluster add --name spark-pair --url http://10.0.0.21:8000/v1 --kind vllm \
+    --members spark-a,spark-b --link "200 GbE"
+```
+
+It routes like any box (it can serve your main model while single boxes serve the fallback tiers). While it is busy, its members count as busy too, so single-box work does not land on memory the big model is using. On the Desktop map its members sit together in a rack, joined by the link, which pulses when Hermes is routed there; its card spans two columns with each member's memory. Local Fleet does not build clusters; it routes to and shows the ones you run.
+
+### Display names
+
+Every box keeps its short handle for commands and can have a display name for the Desktop: click the name on its card to edit (Enter saves, Esc cancels, empty goes back to the handle), or `hermes fleet set gx10 --title "Big Spark"`.
+
 ### Speed
 
 `hermes fleet bench` runs a short generation (64 tokens) on each box and records tokens per second. For Ollama it uses Ollama's own timings (exact decode and prompt-processing speed); for other kinds it times a streamed reply. It only uses a model the box already has in memory, and skips busy boxes, so a bench never loads tens of GB behind your back; `--load` allows loading. `hermes fleet watch`, the start of a session and the Desktop's **Benchmark** button re-bench boxes whose figure is older than `bench_interval_s` (15 minutes; 0 turns it off). When two boxes are equally free, the one that was faster on the model being routed wins.
@@ -164,7 +179,8 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet model [<id>] [--fallback <id>]… [--no-fallback]` | the local model, and fallback models for smaller boxes |
 | `hermes fleet watch [--interval s] [--once]` | keep routing current |
 | `hermes fleet bench [<box>…] [--load]` | measure generation speed (tokens/sec) |
-| `hermes fleet set <box> [--vendor] [--os] [--label] [--memory-gb] [--capacity-gb]` | platform (Desktop icons), labels, total memory and memory for models |
+| `hermes fleet set <box> [--title] [--vendor] [--os] [--label] [--memory-gb] [--capacity-gb]` | display name, platform (Desktop icons), labels, total memory and memory for models |
+| `hermes fleet cluster add\|rm …` | boxes linked to serve one big model behind one endpoint |
 | `hermes fleet delegate on\|off\|status` | subagents on the fleet |
 | `hermes fleet aux on\|off\|status [--tasks]` | side tasks on the fleet |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |

@@ -17,6 +17,22 @@ SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
 HISTORY_LEN = 25  # routing changes kept for the Desktop timeline
 
 
+def _couple_clusters(f, results: dict) -> None:
+    """A cluster's members carry its load: while the big model is busy, the boxes it spans are not
+    free for single-box work (their own endpoints cannot see memory the cluster uses)."""
+    for c in f.nodes:
+        snap = results.get(c["id"])
+        if not c.get("members") or not snap or snap.get("status") not in ("ok", "degraded"):
+            continue
+        for mid in c["members"]:
+            m = results.get(mid)
+            if not m:
+                continue
+            m["in_cluster"] = c["name"]
+            if snap.get("load_proxy") is not None:
+                m["load_proxy"] = round(max(m.get("load_proxy") or 0.0, snap["load_proxy"]), 3)
+
+
 def _age_s(iso: str | None) -> float:
     if not iso:
         return 1e12
@@ -57,6 +73,7 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     f = store.fleet()
     results = probe_all(f.enabled(), timeout=float(settings["probe_timeout_s"]),
                         want=[m for m in model_tiers(settings) if m])
+    _couple_clusters(f, results)
     f.record_health(results)
     if auto_bench:
         run_bench(f, results, settings, _due_for_bench(f, settings))

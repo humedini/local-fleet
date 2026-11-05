@@ -89,6 +89,19 @@ async def aux_toggle(body: dict):
     return await asyncio.to_thread(run)
 
 
+@router.post("/rename")
+async def rename(body: dict):
+    """Set or clear a box's display name (the handle used in commands never changes)."""
+    def run():
+        f = store.fleet()
+        f.update(str(body.get("node") or ""), title=str(body.get("title") or ""))
+        return _view()
+    try:
+        return await asyncio.to_thread(run)
+    except FleetError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/use")
 async def use(body: dict):
     node = str(body.get("node") or "")

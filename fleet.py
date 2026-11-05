@@ -85,7 +85,8 @@ class Fleet:
     def add(self, name: str, url: str, kind: str = "ollama", labels=None,
             api_key_env: str | None = None, enabled: bool = True,
             capacity_gb: float | None = None, vendor: str | None = None, os_name: str | None = None,
-            memory_gb: float | None = None) -> dict:
+            memory_gb: float | None = None, title: str | None = None, members=None,
+            link: str | None = None) -> dict:
         name = (name or "").strip()
         if not name or len(name) > 40 or not re.match(r"^[\w.-]+$", name):
             raise FleetError("name must be 1-40 letters, digits, '.', '_' or '-'")
@@ -97,6 +98,9 @@ class Fleet:
         _check_gb(capacity_gb, "--capacity-gb")
         _check_gb(memory_gb, "--memory-gb")
         _check_platform(vendor, os_name)
+        title = _check_title(title)
+        member_ids = self._member_ids(members)
+        link = _check_link(link)
         for n in self.nodes:
             if n["name"].lower() == name.lower():
                 raise FleetError(f"a node is already called {n['name']!r}")
@@ -113,6 +117,9 @@ class Fleet:
             "api_key_env": api_key_env or None,
             "capacity_gb": capacity_gb,
             "memory_gb": memory_gb,
+            "title": title,
+            "members": member_ids,
+            "link": link,
             "vendor": vendor or None,
             "os": os_name or None,
             "models": [],
@@ -126,9 +133,28 @@ class Fleet:
 
     def remove(self, ref: str) -> dict:
         node = self.get(ref)
+        clusters = [n["name"] for n in self.nodes if node["id"] in (n.get("members") or [])]
+        if clusters:
+            raise FleetError(f"{node['name']} is part of {', '.join(clusters)}; remove it from the cluster first")
         self.nodes.remove(node)
         self.save()
         return node
+
+    def _member_ids(self, members) -> list[str]:
+        """Resolve member refs to ids: existing, distinct, single boxes (not clusters)."""
+        ids = []
+        for ref in members or []:
+            m = self.get(ref)
+            if m.get("members"):
+                raise FleetError(f"{m['name']} is itself a cluster")
+            if m["id"] not in ids:
+                ids.append(m["id"])
+        if ids and len(ids) < 2:
+            raise FleetError("a cluster needs at least two members")
+        return ids
+
+    def clusters_of(self, node_id: str) -> list[dict]:
+        return [n for n in self.nodes if node_id in (n.get("members") or [])]
 
     def set_enabled(self, ref: str, enabled: bool) -> dict:
         node = self.get(ref)
@@ -146,6 +172,15 @@ class Fleet:
         for key in ("vendor", "os", "labels", "capacity_gb", "memory_gb"):
             if fields.get(key) is not None:
                 node[key] = fields[key] or None
+        if fields.get("title") is not None:
+            node["title"] = _check_title(fields["title"])
+        if fields.get("link") is not None:
+            node["link"] = _check_link(fields["link"])
+        if fields.get("members") is not None:
+            ids = self._member_ids(fields["members"])
+            if node["id"] in ids:
+                raise FleetError("a cluster cannot contain itself")
+            node["members"] = ids
         node["updated_at"] = now_iso()
         self.save()
         return node
@@ -173,6 +208,29 @@ class Fleet:
                 n["models"] = snap["models"]
             n["updated_at"] = snap["checked_at"]
         self.save()
+
+
+def _check_title(title):
+    """A display name: 1-40 printable characters, or None to clear."""
+    if title is None:
+        return None
+    title = " ".join(str(title).split())
+    if not title:
+        return None
+    if len(title) > 40 or not title.isprintable():
+        raise FleetError("a display name is 1-40 printable characters")
+    return title
+
+
+def _check_link(link):
+    link = " ".join(str(link or "").split())
+    if len(link) > 30:
+        raise FleetError("--link is a short label such as '200 GbE'")
+    return link or None
+
+
+def display_name(node: dict) -> str:
+    return node.get("title") or node["name"]
 
 
 def _check_gb(value, flag):

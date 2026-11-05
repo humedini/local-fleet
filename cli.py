@@ -53,13 +53,27 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("bench", help="Measure generation speed (tokens/sec) on each box")
     p.add_argument("node", nargs="*", help="ids or names (default: every enabled box)")
     p.add_argument("--load", action="store_true", help="Load the model if it is not in memory (slow, uses memory)")
-    p = sub.add_parser("set", help="Set a box's vendor / OS (for the Desktop icons), labels or capacity")
+    p = sub.add_parser("cluster", help="Boxes linked to serve one big model behind one endpoint")
+    csub = p.add_subparsers(dest="cluster_command", metavar="<add|rm>")
+    c = csub.add_parser("add", help="Register a cluster (its API endpoint and its member boxes)")
+    c.add_argument("--name", required=True)
+    c.add_argument("--url", required=True, help="the head node's OpenAI-compatible base URL")
+    c.add_argument("--kind", choices=KINDS, default="vllm")
+    c.add_argument("--members", required=True, help="comma list of registered boxes, e.g. spark-a,spark-b")
+    c.add_argument("--link", help="the interconnect, shown on the map, e.g. '200 GbE'")
+    c.add_argument("--title", help="display name")
+    c.add_argument("--api-key-env")
+    csub.add_parser("rm", help="Remove a cluster (its members stay)").add_argument("cluster")
+    p = sub.add_parser("set", help="Set a box's display name, platform, memory, labels, or a cluster's members")
     p.add_argument("node", help="id or name")
     p.add_argument("--vendor", choices=VENDORS)
     p.add_argument("--os", dest="os_name", choices=OSES)
     p.add_argument("--label", action="append", help="Replaces the labels; repeatable")
     p.add_argument("--capacity-gb", type=float, help="memory the box can give to models")
     p.add_argument("--memory-gb", type=float, help="the box's total memory")
+    p.add_argument("--title", help="display name shown in Desktop ('' clears it)")
+    p.add_argument("--members", help="cluster members, comma list")
+    p.add_argument("--link", help="cluster interconnect label")
     sub.add_parser("stats", help="Real traffic per box this week: calls, tok/s, latency, local share, spend avoided")
     p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
     p.add_argument("input", type=float)
@@ -296,12 +310,33 @@ def _dispatch(cmd: str, args) -> int:
             else:
                 print(f"  {n['name']:<12}  skipped: {r.get('skipped') or r.get('error')}")
         return 0
+    if cmd == "cluster":
+        f = store.fleet()
+        if args.cluster_command == "rm":
+            node = f.get(args.cluster)
+            if not node.get("members"):
+                print(f"✗ {node['name']} is a box, not a cluster; use hermes fleet rm")
+                return 1
+            f.remove(args.cluster)
+            print(f"removed cluster {node['name']} (its members stay registered)")
+            return 0
+        if args.cluster_command != "add":
+            print("usage: hermes fleet cluster add|rm …")
+            return 2
+        members = [m.strip() for m in args.members.split(",") if m.strip()]
+        node = f.add(args.name, args.url, args.kind, [], args.api_key_env, title=args.title,
+                     members=members, link=args.link)
+        names = [f.get(m)["name"] for m in node["members"]]
+        print(f"added cluster {node['name']}: {' + '.join(names)}{' over ' + node['link'] if node.get('link') else ''} at {node['base_url']}")
+        return 0
     if cmd == "set":
         node = store.fleet().update(args.node, vendor=args.vendor, os=args.os_name, labels=args.label,
-                                    capacity_gb=args.capacity_gb, memory_gb=args.memory_gb)
+                                    capacity_gb=args.capacity_gb, memory_gb=args.memory_gb, title=args.title,
+                                    members=args.members.split(",") if args.members else None, link=args.link)
         from .fleet import platform
         p = platform(node)
-        mem = f" memory={node['memory_gb']:g}GB" if node.get("memory_gb") else ""
+        mem = f" title={node['title']!r}" if node.get("title") else ""
+        mem += f" memory={node['memory_gb']:g}GB" if node.get("memory_gb") else ""
         ai = f" for-AI={node['capacity_gb']:g}GB" if node.get("capacity_gb") else ""
         print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'}{mem}{ai} labels={','.join(node['labels']) or '-'}")
         return 0

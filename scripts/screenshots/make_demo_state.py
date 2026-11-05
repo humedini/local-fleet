@@ -62,31 +62,51 @@ for k, n in enumerate(nodes):
     series[n["id"]] = [{"t": iso(30 - i), "lat": round(base + 2 * math.sin(i / 2 + k) + random.random() * 2, 1),
                         "load": max(0, min(1, load + 0.15 * math.sin(i / 3 + k))), "st": "ok"} for i in range(30)]
 
+# Two Sparks linked over 200 GbE serve one big model behind the head node's vLLM endpoint.
+BIG = "llama3.1:405b"
+cluster = {
+    "id": "d00009", "name": "spark-pair", "title": "Spark pair", "base_url": "http://10.0.0.21:8000/v1", "kind": "vllm",
+    "labels": ["lan"], "enabled": True, "needs_key": False, "members": ["d00001", "d00002"], "link": "200 GbE",
+    "vendor": "nvidia", "os": "linux", "platform": {"vendor": "nvidia", "os": "linux", "guessed": False},
+    "models": [BIG],
+    "last_health": {"checked_at": iso(0.2), "status": "ok", "latency_ms": 6, "free_vram_approx": None, "load_proxy": 0.35,
+                    "detail": "ok", "models": [BIG], "resident": []},
+    "perf": {"tps": 14.2, "tokens": 64, "prompt_tps": 212.0, "model": BIG, "at": iso(5)},
+}
+nodes[0]["title"] = "Spark A"
+nodes[1]["title"] = "Spark B"
+nodes[2]["title"] = "Mac Studio"
+for m in nodes[:2]:  # the cluster's load reaches its members
+    m["last_health"]["load_proxy"] = max(m["last_health"]["load_proxy"] or 0, 0.35)
+nodes.insert(0, cluster)
+series[cluster["id"]] = [{"t": iso(30 - i), "lat": round(6 + math.sin(i / 2), 1), "load": 0.3 + 0.1 * math.sin(i / 4), "st": "ok"} for i in range(30)]
+
 state = {
-    "mode": "auto", "label": "spark-a",
-    "primary": {"provider": "custom", "default": MAIN, "base_url": nodes[0]["base_url"], "api_mode": "chat_completions"},
-    "local_model": MAIN, "model_tiers": [MAIN, FALLBACK],
-    "applied": {"kind": "local", "node_id": "d00001", "node_name": "spark-a", "base_url": nodes[0]["base_url"], "model": MAIN},
+    "mode": "auto", "label": "spark-pair",
+    "primary": {"provider": "custom", "default": "llama3.1:405b", "base_url": "http://10.0.0.21:8000/v1", "api_mode": "chat_completions"},
+    "local_model": BIG, "model_tiers": [BIG, MAIN, FALLBACK],
+    "applied": {"kind": "local", "node_id": "d00009", "node_name": "spark-pair", "base_url": cluster["base_url"], "model": BIG},
     "down": False, "nodes": nodes, "healthy": 4,
-    "last_decision": {"reason": "least busy box: spark-a", "freest_node_id": "d00001", "at": iso(4)},
+    "last_decision": {"reason": "least busy box: spark-pair", "freest_node_id": "d00009", "at": iso(4)},
     "last_probe_at": iso(0.2), "series": series,
     "history": [
         {"at": iso(185), "reason": "least busy box: spark-b", "kind": "local", "node": "spark-b", "model": MAIN},
         {"at": iso(122), "reason": "no box available with gpt-oss:120b or qwen3:14b, using cloud", "kind": "cloud",
          "model": "anthropic/claude-sonnet-4", "via": "failover"},
         {"at": iso(117), "reason": "back on spark-a (it recovered)", "kind": "local", "node": "spark-a", "model": MAIN},
-        {"at": iso(4), "reason": "least busy box: spark-a", "kind": "local", "node": "spark-a", "model": MAIN},
+        {"at": iso(4), "reason": "back to your main model on spark-pair", "kind": "local", "node": "spark-pair", "model": "llama3.1:405b"},
     ],
     "fallback_chain": [{"provider": "openrouter", "model": "anthropic/claude-sonnet-4"}],
     "traffic": {"boxes": {
+        "d00009": {"calls": 188, "errors": 0, "in": 2_400_000, "out": 140_000, "live": 2, "tps": 12.9, "latency_s": 14.2},
         "d00001": {"calls": 412, "errors": 1, "in": 3_910_000, "out": 402_000, "live": 3, "tps": 38.2, "latency_s": 6.1},
-        "d00002": {"calls": 236, "errors": 0, "in": 2_150_000, "out": 231_000, "live": 2, "tps": 35.7, "latency_s": 7.4},
-        "d00003": {"calls": 97, "errors": 0, "in": 880_000, "out": 96_000, "live": 0, "tps": 29.9, "latency_s": 8.8},
+        "d00002": {"calls": 236, "errors": 0, "in": 2_150_000, "out": 231_000, "live": 0, "tps": 35.7, "latency_s": 7.4},
+        "d00003": {"calls": 97, "errors": 0, "in": 880_000, "out": 96_000, "live": 2, "tps": 29.9, "latency_s": 8.8},
         "d00004": {"calls": 58, "errors": 2, "in": 210_000, "out": 44_000, "live": 0, "tps": 51.0, "latency_s": 2.3}},
         "local_tokens": 7_923_000, "cloud_tokens": 1_120_000, "local_share": 0.876, "saved": 36.23, "calls": 870},
     "currency": "USD", "delegation_backend": "fleet",
     "aux": {"tasks": ["title_generation", "compression"], "node_id": "d00004", "node_name": "strix", "model": FALLBACK},
-    "delegations": [{"at": iso(0.5), "label": "spark-b"}, {"at": iso(0.5), "label": "spark-a"}],
+    "delegations": [{"at": iso(0.5), "label": "studio"}],
 }
 # The demo clock is fixed; the page compares times with the viewer's clock, so shift everything to "now".
 shift = datetime.now(timezone.utc) - NOW

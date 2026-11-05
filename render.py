@@ -22,7 +22,8 @@ def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     marks = ("  ← active" if node["id"] == active_id else "") + ("  (least busy)" if node["id"] == freest_id else "")
     detail = h.get("detail", "") if h.get("detail") not in (None, "ok") else ""
     detail = detail.replace("ok · fallback ", "fallback · ")
-    return (f"  {node['name']:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {node['base_url']}"
+    name = node["name"] + ("*" if node.get("members") else "")
+    return (f"  {name:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {node['base_url']}"
             f"{'  ' + detail if detail else ''}{marks}").rstrip()
 
 
