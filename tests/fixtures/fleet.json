@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "nodes": [
+    {"id": "a1b2c3", "name": "gx10", "base_url": "http://192.168.1.50:11434/v1", "kind": "ollama",
+     "labels": ["lan", "gb10"], "enabled": true, "api_key_env": null, "capacity_gb": null,
+     "models": [], "last_health": null, "created_at": "2026-11-05T16:00:00+00:00", "updated_at": "2026-11-05T16:00:00+00:00"},
+    {"id": "d4e5f6", "name": "spark2", "base_url": "http://192.168.1.51:11434/v1", "kind": "ollama",
+     "labels": ["lan"], "enabled": true, "api_key_env": null, "capacity_gb": null,
+     "models": [], "last_health": null, "created_at": "2026-11-05T16:00:00+00:00", "updated_at": "2026-11-05T16:00:00+00:00"}
+  ]
+}

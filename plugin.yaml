@@ -1,0 +1,74 @@
+name: hermes-spark
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+description: Multi-Spark / Ollama-compatible fleet for Hermes — health probes, freest-box routing, prefer-local / prefer-cloud / auto, cloud failover and failback, Desktop chip and /spark
+author: Jonathan Hume
+license: MIT
+homepage: https://github.com/humedini/hermes-spark
+tags: [spark, ollama, vllm, fleet, routing, desktop, dgx]
+requires_hermes: ">=0.22"
+
+provides_tools:
+  - spark_status
+  - spark_list_nodes
+  - spark_pull_model
+
+provides_hooks:
+  - on_session_start
+
+python_dependencies:
+  - "httpx>=0.27,<1"
+
+config_keys:
+  - model.provider
+  - model.default
+  - model.base_url
+  - model.api_mode
+  - model.key_env
+  - fallback_providers
+
+config_schema:
+  mode:
+    type: str
+    choices: [prefer-local, prefer-cloud, auto]
+    default: auto
+    label: Routing mode
+    description: "prefer-local: freest healthy local box, cloud when all are down. prefer-cloud: cloud primary, locals on demand. auto: local when any is healthy, else cloud, back to local when it recovers."
+  cloud_provider:
+    type: str
+    default: openrouter
+    label: Cloud provider
+    description: Hermes provider id used for prefer-cloud and failover; also kept on fallback_providers
+  cloud_model:
+    type: str
+    default: ""
+    label: Cloud model
+    description: Model id on the cloud provider
+  default_model:
+    type: str
+    default: ""
+    label: Local model
+    description: Model id to run on local nodes; nodes without it are skipped. Empty picks one per node.
+  probe_timeout_s:
+    type: float
+    default: 2.0
+    label: Probe timeout (s)
+  probe_interval_s:
+    type: float
+    default: 30.0
+    label: Watch interval (s)
+  failback_enabled:
+    type: bool
+    default: true
+    label: Fail back to local when a box recovers
+  switch_margin:
+    type: float
+    default: 0.25
+    label: Switch margin
+    description: How much freer (0..1 load) another box must be before a healthy active box is swapped out
+  prefer_labels:
+    type: list
+    default: []
+    label: Preferred labels
+    description: Node labels that win ties on load, e.g. ["lan"]
