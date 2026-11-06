@@ -35,8 +35,17 @@ jobs:
           ! grep -nE "return <|=> <[A-Za-z]" desktop/plugin.js
   hermes:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - hermes: "0.22.7"   # the version this release was built against
+            ref: b200f5bc60e31588ba2cb60e288029c4a54ba5fa
+          - hermes: "0.23.0"   # The Hearth Release (2026-11-05)
+            ref: 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19
+    name: hermes ${{ matrix.hermes }}
     env:
-      HERMES_REF: b200f5bc60e31588ba2cb60e288029c4a54ba5fa  # Hermes 0.22.7, the version this release was built against
+      HERMES_REF: ${{ matrix.ref }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
