@@ -22,6 +22,8 @@ DEFAULTS = {
     # How much freer (load_proxy, 0..1) another node must be before a healthy active node is
     # swapped out. Stops two equally idle boxes trading places on every watch tick.
     "switch_margin": 0.25,
+    # Smallest context (tokens) a box's model must have, when verified, to run Hermes's main conversation.
+    "min_context": 32768,
     # Seconds between automatic speed benches per box (watch, session start, Desktop probe); 0 = off.
     "bench_interval_s": 900.0,
     # Load the model on a box before switching Hermes to it (Ollama), and how long to wait.

@@ -84,7 +84,8 @@ def _ollama_load(client, node, want):
         free = max(0, int(cap - used))
     else:
         load, free = 0.25 * len(others), None
-    extra = {"sizes": sizes, "used_bytes": used}
+    contexts = {m.get("name") or m.get("model"): m.get("context_length") for m in loaded if m.get("context_length")}
+    extra = {"sizes": sizes, "used_bytes": used, "contexts": contexts}
     try:  # a few bytes; the version is shown on the box's card
         v = client.get(f"{origin(node['base_url'])}/api/version", headers=node_headers(node))
         if v.status_code == 200:

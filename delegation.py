@@ -17,7 +17,8 @@ import time
 from . import store
 from .fleet import now_iso
 from .health import routable, score
-from .routing import choose_tier, model_for
+from .readiness import DEFAULT_MIN_CONTEXT
+from .routing import check, choose_tier, model_for
 
 NAME = "fleet"
 WHERE = ("any", "local", "cloud")
@@ -40,14 +41,17 @@ def _next_index() -> int:
         return _turn["i"]
 
 
-def route(task: dict, settings: dict, nodes: list[dict], secret=None) -> dict:
+def route(task: dict, settings: dict, nodes: list[dict], secret=None, excluded: dict | None = None) -> dict:
     """The route for one task (pure apart from the fan-out counter)."""
     where = task.get("where") or "any"
     if where == "cloud":
         return _cloud(settings)
     labels = settings.get("prefer_labels") or ()
-    want, _tier = choose_tier(nodes, {n["id"]: n.get("last_health") for n in nodes}, settings)
-    healthy = [n for n in nodes if n.get("enabled", True) and routable(n, n.get("last_health"), want)]
+    excluded = excluded if excluded is not None else {}
+    results = {n["id"]: n.get("last_health") for n in nodes}
+    want, _tier = choose_tier(nodes, results, settings, excluded)
+    min_ctx = int(settings.get("min_context") or DEFAULT_MIN_CONTEXT)
+    healthy = [n for n in nodes if check(n, results[n["id"]], want, excluded, min_ctx)[0]]
     if not healthy:
         if where == "local":
             raise LookupError("no healthy local box for a where=local task")
@@ -110,7 +114,8 @@ def make_provider():
         def route_task(self, task, config):
             from agent.secret_scope import get_secret
             try:
-                r = route(dict(task), store.read_settings(), store.fleet().nodes, get_secret)
+                r = route(dict(task), store.read_settings(), store.fleet().nodes, get_secret,
+                          (store.load_state().get("exclusions") or {}))
             except LookupError as e:
                 raise DelegationRouteError(str(e))
             if not r.get("model"):

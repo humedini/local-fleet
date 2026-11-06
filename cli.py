@@ -74,6 +74,17 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--title", help="display name shown in Desktop ('' clears it)")
     p.add_argument("--members", help="cluster members, comma list")
     p.add_argument("--link", help="cluster interconnect label")
+    sub.add_parser("why", help="Why Hermes is routed where it is: every box's verdict and score")
+    p = sub.add_parser("events", help="The flight recorder: health changes, routes, served endpoints, rehearsals")
+    p.add_argument("-n", type=int, default=30)
+    p = sub.add_parser("rehearse", help="Simulate a box going down (inside Local Fleet only; expires by itself)")
+    p.add_argument("node")
+    p.add_argument("--minutes", type=float, default=10)
+    p.add_argument("--stop", action="store_true", help="end the rehearsal now")
+    p = sub.add_parser("maintenance", help="Leave a box out of new selections (running requests finish)")
+    p.add_argument("node")
+    p.add_argument("action", choices=("on", "off"))
+    sub.add_parser("readiness", help="Can each box run Hermes on your models? Tools, vision, context, with evidence")
     sub.add_parser("stats", help="Real traffic per box this week: calls, tok/s, latency, local share, spend avoided")
     p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
     p.add_argument("input", type=float)
@@ -364,6 +375,25 @@ def _dispatch(cmd: str, args) -> int:
         mem += f" memory={node['memory_gb']:g}GB" if node.get("memory_gb") else ""
         ai = f" for-AI={node['capacity_gb']:g}GB" if node.get("capacity_gb") else ""
         print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'}{mem}{ai} labels={','.join(node['labels']) or '-'}")
+        return 0
+    if cmd == "why":
+        print(render.why_text(engine.apply_policy(dry_run=True)))
+        return 0
+    if cmd == "events":
+        from . import events as ev
+        print(render.events_text(ev.timeline(args.n)))
+        return 0
+    if cmd in ("rehearse", "maintenance"):
+        if (cmd == "rehearse" and args.stop) or (cmd == "maintenance" and args.action == "off"):
+            d = engine.include(args.node)
+        else:
+            d = engine.exclude(args.node, "rehearsal" if cmd == "rehearse" else "maintenance",
+                               args.minutes if cmd == "rehearse" else None)
+        print(render.decision_text(d))
+        return 0
+    if cmd == "readiness":
+        settings, f, _ = engine.probe()
+        print(render.readiness_text(f.enabled(), [m for m in engine.model_tiers(settings) if m], int(settings["min_context"])))
         return 0
     if cmd == "stats":
         print(stats_text())

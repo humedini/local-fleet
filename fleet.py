@@ -91,6 +91,13 @@ class Fleet:
         with self._txn():
             return self._update(ref, **fields)
 
+    def record_caps(self, caps: dict[str, dict]) -> None:
+        """Merge readiness evidence {node_id: {model: caps}} into the boxes on disk."""
+        with self._txn():
+            for n in self.nodes:
+                if n["id"] in caps:
+                    n["caps"] = {**(n.get("caps") or {}), **caps[n["id"]]}
+
     def record_perf(self, results: dict[str, dict]) -> None:
         """Merge bench results into the boxes on disk (by id; boxes removed meanwhile stay removed)."""
         with self._txn():

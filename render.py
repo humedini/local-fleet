@@ -87,6 +87,51 @@ def decision_text(d: dict) -> str:
     return "\n".join(lines)
 
 
+def why_text(d: dict) -> str:
+    """The decision inspector as text: what was picked, why, and every box's verdict."""
+    t = d.get("target") or {}
+    lines = [f"route: {target_text(t)}", f"why: {d.get('reason')}",
+             f"mode: {d.get('mode')}{' · pinned' if d.get('pinned') else ''} · model tier: {d.get('tier_model') or '(each box its own)'}"
+             + (f" (fallback tier {d.get('tier')})" if d.get("tier") else ""), "",
+             f"  {'box':<14} {'verdict':<9} {'load':>5} {'latency':>8} {'tok/s':>6}  reason"]
+    for c in d.get("candidates") or []:
+        mark = "→ " if c.get("chosen") else "  "
+        load = "-" if c.get("load") is None else f"{c['load']:.2f}"
+        lat = "-" if c.get("latency_ms") is None else f"{c['latency_ms']}ms"
+        lines.append(f"{mark}{(c.get('title') or c['name'])[:14]:<14} {'eligible' if c['eligible'] else 'out':<9} {load:>5} {lat:>8} "
+                     f"{c.get('tps') or '-':>6}  {c['reason']}{'  (least busy)' if c.get('least_busy') else ''}")
+    lines.append("\nScore order: load, then preferred labels, then speed on this model, then free memory, then latency.")
+    return "\n".join(lines)
+
+
+def events_text(items: list[dict]) -> str:
+    from datetime import datetime
+    if not items:
+        return "no events yet"
+    out = []
+    for e in items:
+        when = datetime.fromtimestamp(e.get("t", 0)).strftime("%a %H:%M:%S")
+        out.append(f"  {when}  {e.get('kind', ''):<12} {redact(e.get('text', ''))}{' · ' + e['reason'] if e.get('reason') else ''}")
+    return "\n".join(out)
+
+
+def readiness_text(nodes: list[dict], tiers: list[str], min_context: int) -> str:
+    from .readiness import verdict
+    yn = {True: "yes", False: "NO", None: "?"}
+    lines = [f"  {'box':<14} {'model':<24} {'has':<4} {'tools':<6} {'vision':<7} {'context':<26} verdict"]
+    for n in nodes:
+        models = (n.get("last_health") or {}).get("models") or []
+        for m in tiers:
+            c = (n.get("caps") or {}).get(m) or {}
+            have = m in models
+            ok, why = verdict(c, min_context) if have else (None, "not installed")
+            ctx = f"{c['context']} ({c.get('context_source')})" if c.get("context") else (c.get("context_source") or "?")
+            lines.append(f"  {(n.get('title') or n['name'])[:14]:<14} {m[:24]:<24} {'yes' if have else 'no':<4} "
+                         f"{yn.get(c.get('tools')):<6} {yn.get(c.get('vision')):<7} {ctx[:26]:<26} {'-' if ok is None else 'ok' if ok else 'REJECTED'}: {why}")
+    lines.append(f"\nEvidence: Ollama /api/show (capabilities, num_ctx) and /api/ps (running context). Minimum context {min_context}.")
+    return "\n".join(lines)
+
+
 def status_text(fleet_nodes: list[dict], decision: dict, active_id: str = "") -> str:
     """`active_id` is the node Hermes is routed to now (from state), not the decision's pick."""
     return nodes_table(fleet_nodes, active_id, decision.get("freest_node_id") or "") + "\n\n" + decision_text(decision)

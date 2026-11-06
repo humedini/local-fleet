@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from . import aux, config_write, store, traffic
+from . import aux, config_write, events, readiness, store, traffic
 from .warm import warm
 from .fleet import now_iso
 from .bench import bench_node
 from .health import probe_all, routable, score
-from .routing import decide, model_for, model_tiers, same_target
+from .routing import check, decide, model_for, model_tiers, same_target
 
 SERIES_LEN = 40   # probe points kept per node for the Desktop sparklines
 HISTORY_LEN = 25  # routing changes kept for the Desktop timeline
@@ -72,7 +72,20 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     results = probe_all(f.enabled(), timeout=float(settings["probe_timeout_s"]),
                         want=[m for m in model_tiers(settings) if m])
     _couple_clusters(f, results)
+    before = {n["id"]: (n.get("last_health") or {}).get("status") for n in f.nodes}
     f.record_health(results)
+    for n in f.nodes:
+        was, now = before.get(n["id"]), (results.get(n["id"]) or {}).get("status")
+        if now and was and (was in ("ok", "degraded")) != (now in ("ok", "degraded")):
+            detail = "" if now in ("ok", "degraded") else f": {(results[n['id']] or {}).get('detail', '')}"
+            events.record("health", f"{n.get('title') or n['name']} {'is back' if now in ('ok', 'degraded') else 'went down'}{detail}",
+                          box=n["name"], status=now)
+    try:
+        caps = readiness.refresh(f.enabled(), results, [m for m in model_tiers(settings) if m])
+        if caps:
+            f.record_caps(caps)
+    except Exception:
+        pass  # readiness is evidence for display and routing; a failed check leaves it unknown
     if auto_bench:
         run_bench(f, results, settings, _due_for_bench(f, settings))
     stamp = now_iso()
@@ -88,6 +101,20 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
         state["last_probe_at"] = stamp
         store.save_state(state)
     return settings, f, results
+
+
+def active_exclusions(state: dict) -> dict:
+    """Boxes left out of selection: maintenance (until turned off) and rehearsals (until they
+    expire; an expired one is dropped from `state` and recorded)."""
+    out, now = {}, datetime.now(timezone.utc)
+    for nid, ex in list((state.get("exclusions") or {}).items()):
+        until = ex.get("until")
+        if until and datetime.fromisoformat(until) <= now:
+            state["exclusions"].pop(nid, None)
+            events.record("rehearsal", f"rehearsal ended: {ex.get('label') or nid} is back in selection", box=ex.get("label"))
+            continue
+        out[nid] = ex
+    return out
 
 
 def _changed_outside(state: dict) -> bool:
@@ -134,7 +161,8 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
             node = f.get(pin)
             current = {"kind": "local", "node_id": node["id"], "model": current.get("model", ""),
                        "pinned": True}
-        decision = decide(settings, f.nodes, results, current)
+        excluded = active_exclusions(state)
+        decision = decide(settings, f.nodes, results, current, excluded)
         decision["changed"] = not same_target(decision["target"], applied_now)
         target = decision["target"]
         if pin and target.get("node_id") != current["node_id"]:
@@ -179,6 +207,13 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                                    "Auto-pick box or `hermes fleet use --best` resumes it")
         state["last_decision"] = decision
         if decision["applied"]:
+            t = decision["target"]
+            events.record("route", ("configured → " + (f"{t.get('node_name')} · {t.get('model')}" if t["kind"] == "local"
+                                     else f"cloud · {t.get('provider')}/{t.get('model')}")), reason=decision["reason"],
+                          via=t.get("via"))
+        if decision.get("aux") and "→" in decision["aux"]:
+            events.record("aux", decision["aux"])
+        if decision["applied"]:
             event = {"at": decision["at"], "reason": decision["reason"], "kind": target["kind"],
                      "node": target.get("node_name"), "model": target.get("model"), "via": target.get("via")}
             state["history"] = ((store.load_state().get("history") or []) + [event])[-HISTORY_LEN:]
@@ -206,7 +241,10 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
         return f"side tasks: none moved{note}" if keyed else None
     # Least busy healthy box that needs no key (auxiliary blocks cannot name a key's env var).
     want_model = decision.get("tier_model") or ""
-    keyless = [n for n in f.enabled() if not n.get("api_key_env") and routable(n, results.get(n["id"]), want_model)]
+    excluded = state.get("exclusions") or {}
+    min_ctx = int(settings.get("min_context") or readiness.DEFAULT_MIN_CONTEXT)
+    keyless = [n for n in f.enabled() if not n.get("api_key_env")
+               and check(n, results.get(n["id"]), want_model, excluded, min_ctx)[0]]
     node = min(keyless, key=lambda n: score(n, results[n["id"]], settings.get("prefer_labels") or (), want_model),
                default=None)
     if node is None:
@@ -258,6 +296,36 @@ def _keep_loaded(settings, f, results, before: dict, now: dict) -> str | None:
         return f"keeping {now['model']} loaded on {node['name']}" + ("" if r.get("warmed") else f" ({r.get('detail')})")
     except Exception:
         return None
+
+
+def exclude(ref: str, kind: str, minutes: float | None = None) -> dict:
+    """Leave a box out of selection: kind "rehearsal" (a simulated outage inside Local Fleet only,
+    expiring after `minutes`) or "maintenance" (until turned off). Nothing is stopped on the box and
+    requests already running there finish. Re-routes only if routing is on."""
+    with store.transaction():
+        node = store.fleet().get(ref)
+        state = store.load_state()
+        until = (datetime.now(timezone.utc) + timedelta(minutes=minutes or 10)).isoformat(timespec="seconds") \
+            if kind == "rehearsal" else None
+        state.setdefault("exclusions", {})[node["id"]] = {"kind": kind, "until": until, "since": now_iso(),
+                                                          "label": node.get("title") or node["name"]}
+        store.save_state(state)
+    label = node.get("title") or node["name"]
+    events.record(kind, f"{label}: simulated outage for {int(minutes or 10)} min (nothing stopped on the box)"
+                  if kind == "rehearsal" else f"{label}: maintenance on, left out of new selections", box=node["name"])
+    return apply_policy(dry_run=not store.load_state().get("applied"))
+
+
+def include(ref: str) -> dict:
+    """End a rehearsal or maintenance for a box."""
+    with store.transaction():
+        node = store.fleet().get(ref)
+        state = store.load_state()
+        ex = (state.get("exclusions") or {}).pop(node["id"], None)
+        store.save_state(state)
+    if ex:
+        events.record(ex.get("kind", "rehearsal"), f"{node.get('title') or node['name']}: back in selection", box=node["name"])
+    return apply_policy(dry_run=not store.load_state().get("applied"))
 
 
 def set_keep(on: bool) -> str:
@@ -340,6 +408,8 @@ def snapshot() -> dict:
         "keep_loaded": bool(settings.get("keep_loaded")),
         "hide_addresses": bool(settings.get("hide_addresses")),
         "paused": bool(state.get("paused")),
+        "exclusions": {k: v for k, v in (state.get("exclusions") or {}).items()},
+        "events": events.timeline(40),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],
         "history": state.get("history") or [],
