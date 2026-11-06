@@ -1,8 +1,8 @@
-# Draft of plugin-catalog/local-fleet.yaml for the catalog PR. Fill `sha` with the full 40-char
-# commit of the v0.1.0 tag and `image` with the screenshot pinned to that sha before opening the PR.
+# plugin-catalog/local-fleet.yaml for the catalog PR: pinned to the v0.1.0 tag. Copy this file into
+# NousResearch/hermes-agent's plugin-catalog/ once the repo is public.
 name: local-fleet
 repo: https://github.com/humedini/local-fleet
-sha: 0000000000000000000000000000000000000000
+sha: 03701af55641168f4c05b7760258fc2324d373f3
 title: Local Fleet
 description: 'Health-aware routing across your own inference boxes (DGX Spark / GB10, Ollama, vLLM, LiteLLM, and
   clusters behind one endpoint). Probes each box, makes the least busy healthy one the primary model, falls back to
@@ -20,6 +20,10 @@ version: "0.1.0"
 requires_hermes: ">=0.22"
 docs_url: https://github.com/humedini/local-fleet#readme
 readme: true
+image: https://raw.githubusercontent.com/humedini/local-fleet/03701af55641168f4c05b7760258fc2324d373f3/docs/img/fleet-page.png
+screenshots:
+  - https://raw.githubusercontent.com/humedini/local-fleet/03701af55641168f4c05b7760258fc2324d373f3/docs/img/fleet-map.gif
+  - https://raw.githubusercontent.com/humedini/local-fleet/03701af55641168f4c05b7760258fc2324d373f3/docs/img/fleet-chip.png
 platforms: []
 capabilities:
   provides_tools: [fleet_status, fleet_list_nodes, fleet_pull_model]
