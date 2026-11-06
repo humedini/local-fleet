@@ -201,6 +201,25 @@ hermes fleet watch --interval 20      # foreground; Ctrl-C to stop
 hermes fleet watch --once             # one tick, for cron or a systemd timer
 ```
 
+To keep it running, a systemd user service is the simplest (with `loginctl enable-linger` so it survives logout):
+
+```ini
+# ~/.config/systemd/user/hermes-fleet-watch.service
+[Unit]
+Description=Local Fleet watch
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/hermes fleet watch --interval 30
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+```
+
+`systemctl --user enable --now hermes-fleet-watch`. The doctor reports *Watch loop running* from the loop's own heartbeat. With keep-loaded on, a switch holds the model on the new box, so a laptop that sleeps moves its model onto the next box until it wakes.
+
 ## LiteLLM
 
 Two supported setups:
@@ -295,7 +314,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - **A standalone plugin.** An in-tree `hermes dgx` proposal (hermes-agent PR #28009) was closed in favour of plugins; Local Fleet is that shape.
 - **Not mixture-of-agents.** Plugins such as hermes-local-moa combine models for quality; Local Fleet picks where the one model runs.
 
-## Known limitations (v0.2.0)
+## Known limitations (v0.2.1)
 
 - Continuous switching needs `hermes fleet watch` running (see *Keeping it current*). The doctor judges that from the loop's own heartbeat.
 - Private inference covers Hermes's model routing only (see its table); it is not air-gapping.

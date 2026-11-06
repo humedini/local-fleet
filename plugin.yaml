@@ -1,5 +1,5 @@
 name: local-fleet
-version: 0.2.0
+version: 0.2.1
 manifest_version: 2
 api_version: 1
 description: Local inference fleet for Hermes (DGX Spark, Ollama, vLLM, LiteLLM) — health probes, freest-box routing, prefer-local / prefer-cloud / auto, cloud failover and failback, Desktop chip and /fleet
