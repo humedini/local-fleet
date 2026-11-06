@@ -478,7 +478,7 @@ def _dispatch(cmd: str, args) -> int:
         p = config_write.current_primary()
         applied = store.load_state().get("applied")
         print(f"primary: {p.get('provider', '?')} model={p.get('default', '?')}"
-              f"{' base_url=' + p['base_url'] if p.get('base_url') else ''}")
+              f"{' base_url=' + render.redact(p['base_url']) if p.get('base_url') else ''}")
         print(f"routed by local-fleet: {target_text(applied) if applied else 'no'}")
         return 0
     if cmd == "restore":

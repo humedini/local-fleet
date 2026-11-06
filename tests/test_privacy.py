@@ -26,6 +26,7 @@ def _fleet(up: bool):
         if up:
             respx.get(f"{url}/v1/models").respond(json={"data": [{"id": "qwen"}]})
             respx.get(f"{url}/api/ps").respond(json={"models": []})
+            respx.post(f"{url}/api/generate").respond(json={"done": True})
         else:
             respx.get(f"{url}/v1/models").mock(side_effect=httpx.ConnectError(
                 f"All connection attempts failed for {url}/v1/models via 100.99.1.2"))
@@ -73,7 +74,7 @@ def test_recorder_file_never_stores_an_address_even_with_privacy_off(private_box
 @respx.mock
 def test_cli_text_json_tools_and_export_hide_addresses(private_boxes, capsys):  # noqa: F811
     _fleet(up=True)
-    engine.probe()
+    engine.apply_policy(pin="lab")  # Hermes on the telling box, so `endpoint` has its address to hide
     _fleet(up=False)
     engine.probe()
     render.configure(True, store.fleet().nodes)
@@ -84,7 +85,8 @@ def test_cli_text_json_tools_and_export_hide_addresses(private_boxes, capsys):  
         _clean(render.events_text(events.timeline(40)))
     finally:
         render.configure(False)
-    for argv in (["status"], ["status", "--json"], ["list", "--json"], ["why"], ["doctor"], ["snapshot"], ["events"]):
+    for argv in (["status"], ["status", "--json"], ["list", "--json"], ["why"], ["doctor"], ["snapshot"], ["events"],
+                 ["endpoint"], ["private", "status"], ["readiness"], ["stats"]):
         ns = _parse(argv)
         try:
             cli.main(ns)
