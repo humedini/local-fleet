@@ -19,26 +19,69 @@ def _load(h: dict, perf: dict | None = None) -> str:
     return " ".join(bits)
 
 
-HIDE = {"on": False}  # set by the CLI from the hide_addresses setting
+HIDE = {"on": False, "hosts": ()}  # set by every output path from the hide_addresses setting (see configure)
 
 
-_ADDR = re.compile(r"(?:https?://|\b)(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?[^\s'\"]*|https?://[^\s'\"]+|\b[\w-]+(?:\.[\w-]+)*\.ts\.net(?::\d+)?[^\s'\"]*")
+_ADDR = re.compile(r"(?:https?://|\b)(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?[^\s'\"()<>,;]*|https?://[^\s'\"()<>,;]+"
+                   r"|\b[\w-]+(?:\.[\w-]+)*\.(?:ts\.net|local|lan|home|internal|home\.arpa)(?::\d+)?[^\s'\"()<>,;]*"
+                   r"|\b[A-Za-z][\w-]*(?:\.[\w-]+)*:\d{2,5}\b|\[[0-9a-fA-F:]+\](?::\d+)?")
+
+
+def hosts_of(nodes) -> tuple[str, ...]:
+    """The host part of every registered box's URL, longest first (redacted wherever it appears).
+    A host that is also a box's name (http://gx10:11434 registered as gx10) stays: the name is shown
+    on purpose, and masking it would hide the box itself."""
+    from urllib.parse import urlsplit
+    nodes = list(nodes or [])
+    names = {str(v).lower() for n in nodes for v in (n.get("name"), n.get("title")) if v}
+    out = {(urlsplit(n.get("base_url") or "").hostname or "") for n in nodes}
+    return tuple(sorted((h for h in out if len(h) > 2 and h.lower() not in names), key=len, reverse=True))
+
+
+def configure(on: bool, nodes=()) -> None:
+    """Turn address hiding on or off for this process's output, knowing the boxes' own hosts."""
+    HIDE["on"] = bool(on)
+    HIDE["hosts"] = hosts_of(nodes) if on else ()
+
+
+def mask(text: str, hosts=()) -> str:
+    """Always: URLs, IP addresses, host:port, LAN/tailnet names and the boxes' own hosts -> <address>."""
+    out = _ADDR.sub("<address>", str(text))
+    for h in hosts:
+        out = re.sub(rf"(?<![\w.-]){re.escape(h)}(?![\w-])", "<address>", out)
+    return out
 
 
 def redact(text: str) -> str:
-    """With privacy on, any URL, IP address or tailnet name in `text` becomes <address>."""
-    return _ADDR.sub("<address>", str(text)) if HIDE["on"] else str(text)
+    """With privacy on, any address in `text` becomes <address>."""
+    return mask(text, HIDE["hosts"]) if HIDE["on"] else str(text)
+
+
+_ADDRESS_KEYS = {"base_url", "url", "api", "origin"}
 
 
 def strip_addresses(v):
-    """With privacy on, drop every base_url and redact addresses in strings, recursively."""
+    """With privacy on, drop every address field and redact addresses in strings, recursively."""
     if not HIDE["on"]:
         return v
     if isinstance(v, dict):
-        return {k: strip_addresses(x) for k, x in v.items() if k != "base_url"}
+        return {k: strip_addresses(x) for k, x in v.items() if k not in _ADDRESS_KEYS}
     if isinstance(v, list):
         return [strip_addresses(x) for x in v]
     return redact(v) if isinstance(v, str) else v
+
+
+def scrub(v, on: bool, nodes=()):
+    """`strip_addresses` for one value with an explicit setting: what the Desktop REST, the agent
+    tools and the JSON export send (they run in long-lived processes, so no global switch)."""
+    if not on:
+        return v
+    saved = dict(HIDE)
+    try:
+        configure(True, nodes)
+        return strip_addresses(v)
+    finally:
+        HIDE.update(saved)
 
 
 def _url(node: dict) -> str:
@@ -51,7 +94,7 @@ def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     perf = node.get("perf")
     marks = ("  ← active" if node["id"] == active_id else "") + ("  (least busy)" if node["id"] == freest_id else "")
     detail = h.get("detail", "") if h.get("detail") not in (None, "ok") else ""
-    detail = detail.replace("ok · fallback ", "fallback · ")
+    detail = redact(detail.replace("ok · fallback ", "fallback · "))
     name = node["name"] + ("*" if node.get("members") else "")
     return (f"  {name:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {_url(node)}"
             f"{'  ' + detail if detail else ''}{marks}").rstrip()
@@ -67,6 +110,8 @@ def nodes_table(nodes: list[dict], active_id: str = "", freest_id: str = "") -> 
 def target_text(t: dict) -> str:
     if not t:
         return "nothing applied yet"
+    if t.get("kind") == "refused":
+        return f"refused (private inference)" + (f": primary held on {t.get('node_name')}" if t.get("node_name") else "")
     if t.get("kind") == "local":
         return f"{t.get('node_name')} · {t.get('model') or '?'}" + ("" if HIDE["on"] else f" · {t.get('base_url')}")
     return f"cloud · {t.get('provider') or '?'}/{t.get('model') or '?'}"
@@ -74,7 +119,7 @@ def target_text(t: dict) -> str:
 
 def decision_text(d: dict) -> str:
     lines = [f"mode: {d.get('mode')}", f"route: {target_text(d.get('target') or {})}",
-             f"why: {d.get('reason')}"]
+             f"why: {redact(d.get('reason'))}"]
     if d.get("applied"):
         lines.append("applied: primary model updated (gateway and Desktop pick it up on the next message; "
                      "a running CLI session on its next session)")
@@ -83,14 +128,14 @@ def decision_text(d: dict) -> str:
     if d.get("fallback_added"):
         lines.append("fallback_providers: cloud entry added")
     if d.get("warning"):
-        lines.append(f"warning: {d['warning']}")
+        lines.append(f"warning: {redact(d['warning'])}")
     return "\n".join(lines)
 
 
 def why_text(d: dict) -> str:
     """The decision inspector as text: what was picked, why, and every box's verdict."""
     t = d.get("target") or {}
-    lines = [f"route: {target_text(t)}", f"why: {d.get('reason')}",
+    lines = [f"route: {target_text(t)}", f"why: {redact(d.get('reason'))}",
              f"mode: {d.get('mode')}{' · pinned' if d.get('pinned') else ''} · model tier: {d.get('tier_model') or '(each box its own)'}"
              + (f" (fallback tier {d.get('tier')})" if d.get("tier") else ""), "",
              f"  {'box':<14} {'verdict':<9} {'load':>5} {'latency':>8} {'tok/s':>6}  reason"]
@@ -99,7 +144,7 @@ def why_text(d: dict) -> str:
         load = "-" if c.get("load") is None else f"{c['load']:.2f}"
         lat = "-" if c.get("latency_ms") is None else f"{c['latency_ms']}ms"
         lines.append(f"{mark}{(c.get('title') or c['name'])[:14]:<14} {'eligible' if c['eligible'] else 'out':<9} {load:>5} {lat:>8} "
-                     f"{c.get('tps') or '-':>6}  {c['reason']}{'  (least busy)' if c.get('least_busy') else ''}")
+                     f"{c.get('tps') or '-':>6}  {redact(c['reason'])}{'  (least busy)' if c.get('least_busy') else ''}")
     lines.append("\nScore order: load, then preferred labels, then speed on this model, then free memory, then latency.")
     return "\n".join(lines)
 
@@ -111,7 +156,7 @@ def events_text(items: list[dict]) -> str:
     out = []
     for e in items:
         when = datetime.fromtimestamp(e.get("t", 0)).strftime("%a %H:%M:%S")
-        out.append(f"  {when}  {e.get('kind', ''):<12} {redact(e.get('text', ''))}{' · ' + e['reason'] if e.get('reason') else ''}")
+        out.append(f"  {when}  {e.get('kind', ''):<12} {redact(e.get('text', ''))}{' · ' + redact(e['reason']) if e.get('reason') else ''}")
     return "\n".join(out)
 
 

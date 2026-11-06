@@ -28,7 +28,7 @@ def _package():
 
 
 _package()
-from local_fleet_desktop_api import engine, store  # noqa: E402
+from local_fleet_desktop_api import engine, render, store  # noqa: E402
 from local_fleet_desktop_api.constants import MODES  # noqa: E402
 from local_fleet_desktop_api.fleet import FleetError, public_node  # noqa: E402
 
@@ -43,16 +43,34 @@ def _view(decision: dict | None = None) -> dict:
     return snap
 
 
+def _private(v):
+    """Every response and error goes through here: with privacy on, no address field and no
+    address inside any text (probe errors, reasons, the recorder) leaves the backend."""
+    return render.scrub(v, bool(store.read_settings().get("hide_addresses")), store.fleet().nodes)
+
+
+async def _run(fn, status_code: int = 404):
+    def work():
+        try:
+            return _private(fn())
+        except FleetError as e:
+            return HTTPException(status_code=status_code, detail=_private(str(e)))
+    out = await asyncio.to_thread(work)
+    if isinstance(out, HTTPException):
+        raise out
+    return out
+
+
 @router.get("/status")
 async def status():
     """Stored state only (cheap; the chip polls this)."""
-    return await asyncio.to_thread(_view)
+    return await _run(_view)
 
 
 @router.post("/probe")
 async def probe():
     """Probe now and say where the policy would route, without changing anything."""
-    return await asyncio.to_thread(lambda: _view(engine.apply_policy(dry_run=True)))
+    return await _run(lambda: _view(engine.apply_policy(dry_run=True)))
 
 
 @router.post("/bench")
@@ -61,7 +79,7 @@ async def bench(body: dict | None = None):
     def run():
         engine.bench()
         return _view()
-    return await asyncio.to_thread(run)
+    return await _run(run)
 
 
 @router.post("/delegate")
@@ -72,7 +90,7 @@ async def delegate(body: dict):
         store.set_delegation_backend("fleet" if on else "default")
         return _view()
 
-    return await asyncio.to_thread(run)
+    return await _run(run)
 
 
 @router.post("/aux")
@@ -86,19 +104,19 @@ async def aux_toggle(body: dict):
         engine.aux_off()
         return _view()
 
-    return await asyncio.to_thread(run)
+    return await _run(run)
 
 
 @router.post("/private")
 async def private(body: dict):
     on = bool(body.get("on"))
-    return await asyncio.to_thread(lambda: {**_view(), "decision": {"reason": engine.set_private(on)}})
+    return await _run(lambda: {**_view(), "decision": {"reason": engine.set_private(on)}})
 
 
 @router.post("/keep")
 async def keep(body: dict):
     on = bool(body.get("on"))
-    return await asyncio.to_thread(lambda: {**_view(), "decision": {"reason": engine.set_keep(on)}})
+    return await _run(lambda: {**_view(), "decision": {"reason": engine.set_keep(on)}})
 
 
 @router.post("/rename")
@@ -108,16 +126,13 @@ async def rename(body: dict):
         f = store.fleet()
         f.update(str(body.get("node") or ""), title=str(body.get("title") or ""))
         return _view()
-    try:
-        return await asyncio.to_thread(run)
-    except FleetError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _run(run, status_code=400)
 
 
 @router.post("/why")
 async def why():
     """Probe and decide without changing anything: the decision inspector's data."""
-    return await asyncio.to_thread(lambda: _view(engine.apply_policy(dry_run=True)))
+    return await _run(lambda: _view(engine.apply_policy(dry_run=True)))
 
 
 @router.post("/exclude")
@@ -126,45 +141,36 @@ async def exclude(body: dict):
     kind = body.get("kind")
     if kind not in ("rehearsal", "maintenance"):
         raise HTTPException(status_code=400, detail="kind must be rehearsal or maintenance")
-    try:
-        return await asyncio.to_thread(lambda: _view(engine.exclude(str(body.get("node") or ""), kind, float(body.get("minutes") or 10))))
-    except FleetError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return await _run(lambda: _view(engine.exclude(str(body.get("node") or ""), kind, float(body.get("minutes") or 10))))
 
 
 @router.post("/include")
 async def include(body: dict):
-    try:
-        return await asyncio.to_thread(lambda: _view(engine.include(str(body.get("node") or ""))))
-    except FleetError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return await _run(lambda: _view(engine.include(str(body.get("node") or ""))))
 
 
 @router.post("/reapply")
 async def reapply():
-    return await asyncio.to_thread(lambda: _view(engine.reapply()))
+    return await _run(lambda: _view(engine.reapply()))
 
 
 @router.post("/relinquish")
 async def relinquish():
-    return await asyncio.to_thread(lambda: {**_view(), "decision": {"reason": engine.relinquish()}})
+    return await _run(lambda: {**_view(), "decision": {"reason": engine.relinquish()}})
 
 
 @router.get("/doctor")
 async def doctor_checks():
     from local_fleet_desktop_api import doctor
-    return await asyncio.to_thread(lambda: {"checks": doctor.checks()})
+    return await _run(lambda: {"checks": doctor.checks()})
 
 
 @router.post("/use")
 async def use(body: dict):
     node = str(body.get("node") or "")
-    try:
-        if node in ("", "best", "freest"):
-            return await asyncio.to_thread(lambda: _view(engine.apply_policy(unpin=True)))
-        return await asyncio.to_thread(lambda: _view(engine.apply_policy(pin=node)))
-    except FleetError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    if node in ("", "best", "freest"):
+        return await _run(lambda: _view(engine.apply_policy(unpin=True)))
+    return await _run(lambda: _view(engine.apply_policy(pin=node)))
 
 
 @router.post("/mode")
@@ -177,4 +183,4 @@ async def mode(body: dict):
         store.write_setting("mode", m)
         return _view(engine.apply_policy(unpin=True))
 
-    return await asyncio.to_thread(run)
+    return await _run(run)

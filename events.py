@@ -19,9 +19,14 @@ KEEP = 400
 
 
 def record(kind: str, text: str, **fields) -> None:
-    """Append one event. Never raises: the recorder must not break routing."""
+    """Append one event. Never raises: the recorder must not break routing. Addresses are masked
+    before anything is stored (a probe error can quote a URL), so the recorder file, the Desktop and
+    the JSON export never hold one, whatever the privacy setting."""
     try:
-        line = {"t": round(time.time(), 2), "kind": kind, "text": text, **{k: v for k, v in fields.items() if v is not None}}
+        from .render import hosts_of, mask
+        hosts = hosts_of(store.fleet().nodes)
+        clean = {k: mask(v, hosts) if isinstance(v, str) else v for k, v in fields.items() if v is not None}
+        line = {"t": round(time.time(), 2), "kind": kind, "text": mask(text, hosts), **clean}
         with store.transaction():
             path = store.data_dir() / FILE
             with open(path, "a") as f:

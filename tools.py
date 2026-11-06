@@ -6,7 +6,7 @@ import re
 
 import httpx
 
-from . import engine, store
+from . import engine, render, store
 from .fleet import public_node
 from .health import node_headers, origin
 
@@ -14,8 +14,24 @@ _TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}(:[A-Za-z0-9._-]{1,64})?$"
 PULL_TIMEOUT_S = 1800
 
 
+def _hide() -> bool:
+    try:
+        return bool(store.read_settings().get("hide_addresses"))
+    except Exception:
+        return True  # cannot read the setting: err on the side of hiding
+
+
+def _json(v: dict) -> str:
+    """With privacy on, no address reaches the agent's transcript (it may be on screen)."""
+    try:
+        nodes = store.fleet().nodes
+    except Exception:
+        nodes = []
+    return json.dumps(render.scrub(v, _hide(), nodes))
+
+
 def _err(msg: str) -> str:
-    return json.dumps({"ok": False, "error": msg})
+    return _json({"ok": False, "error": msg})
 
 
 def fleet_ready() -> bool:
@@ -29,7 +45,7 @@ def fleet_status(args: dict, **kwargs) -> str:
     try:
         d = engine.apply_policy(dry_run=True)
         nodes = [public_node(n) for n in store.fleet().nodes]
-        return json.dumps({"ok": True, "mode": d["mode"], "would_route_to": d["target"], "reason": d["reason"],
+        return _json({"ok": True, "mode": d["mode"], "would_route_to": d["target"], "reason": d["reason"],
                            "freest_node_id": d["freest_node_id"], "healthy_locals": d["healthy_locals"],
                            "applied_now": store.load_state().get("applied"), "nodes": nodes})
     except Exception as e:
@@ -38,7 +54,7 @@ def fleet_status(args: dict, **kwargs) -> str:
 
 def fleet_list_nodes(args: dict, **kwargs) -> str:
     try:
-        return json.dumps({"ok": True, "nodes": [public_node(n) for n in store.fleet().nodes]})
+        return _json({"ok": True, "nodes": [public_node(n) for n in store.fleet().nodes]})
     except Exception as e:
         return _err(f"list failed: {e}")
 
@@ -63,7 +79,7 @@ def fleet_pull_model(args: dict, **kwargs) -> str:
                         last = json.loads(line)
                         if last.get("error"):
                             return _err(f"ollama: {last['error']}")
-        return json.dumps({"ok": last.get("status") == "success", "node": node["name"], "model": model,
+        return _json({"ok": last.get("status") == "success", "node": node["name"], "model": model,
                            "status": last.get("status", "unknown")})
     except httpx.TimeoutException:
         return _err(f"pull still running after {PULL_TIMEOUT_S}s; check `ollama ps` on the box")
