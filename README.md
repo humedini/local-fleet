@@ -122,7 +122,7 @@ The Local Fleet page (and the CLI) is where you run the fleet day to day:
 - **Drift.** If something else changes what Local Fleet wrote (you, or another plugin editing `fallback_providers` or the side-task blocks), Local Fleet notices, says so, and does not overwrite it. *Reapply* takes routing back; *Stop managing* leaves the config exactly as it is. `hermes fleet drift [--reapply|--relinquish]`.
 - **Readiness.** Per box and model: tool calling, vision and context size, with where each fact came from (Ollama's `/api/show` and `/api/ps`). A box is left out only on verified evidence: a model Ollama says cannot call tools, or a verified context below `min_context` (32k by default; Hermes's system prompt alone is ~15k tokens). Unknowns are shown as unknown. `hermes fleet readiness`.
 - **Workload on the map.** Each box is labelled with what it is doing: chat, side tasks (titles, compression), subagents, rehearsal or maintenance.
-- **Doctor.** The *Doctor* button lists every check with a one-click fix (probe again, auto-pick, reapply, end a rehearsal) or the exact command to run. `hermes fleet doctor`. It complements `hermes doctor` and `hermes plugins doctor`.
+- **Doctor.** The *Doctor* button lists every check with a one-click fix (probe again, auto-pick, reapply, end a rehearsal) or the exact command to run: boxes down, keys missing, readiness, cloud backup, drift, private inference, plain HTTP to a public address, and whether a watch loop is really running (its heartbeat, not the doctor's own probe). `hermes fleet doctor`. It complements `hermes doctor` and `hermes plugins doctor`.
 
 ## Private inference
 
@@ -130,9 +130,20 @@ The Local Fleet page (and the CLI) is where you run the fleet day to day:
 hermes fleet private on
 ```
 
-Hermes's model calls that Local Fleet routes go only to your registered boxes. Cloud entries come off `fallback_providers` (kept and put back by `private off`), side tasks lose their cloud fallback, `where: cloud` subagents are refused, and when no box is available Local Fleet **refuses** instead of switching to cloud: the chip shows *private · no box*, the flight recorder logs it, and Hermes's calls fail until a box is back. The doctor flags any cloud entry or side task still pointing at cloud.
+Turning it on applies, and then checks against Hermes's config as it actually is:
 
-It is not air-gapping: tools such as web search still use the internet, and model calls Local Fleet does not route (a provider you pick by hand, another plugin's own calls) are outside it.
+| Path | What `private on` does | Checked every time |
+|---|---|---|
+| Primary | Local Fleet takes routing (even if it was off or paused) and puts Hermes on a box. With no box up it **refuses** cloud and keeps the primary on a registered box, so calls fail until one is back. | the primary's endpoint is a registered box |
+| `fallback_providers` | cloud entries come off, kept and put back by `private off` | no entry outside the fleet; the legacy `fallback_model` key too |
+| Side tasks | the ones Local Fleet manages lose their cloud `fallback_chain` and stay on their box while it is down | every `auxiliary.<task>` follows the primary (`auto`/`main`) or points at a box, with a local `fallback_chain` |
+| Subagents | `delegation.backend` moves to `fleet`, which refuses cloud (the previous backend comes back on `off`, unless it was changed meanwhile) | the backend is `fleet` |
+
+Hermes core resolves an `auto` side task as main provider, then the task's `fallback_chain`, then `fallback_providers`, and does not fall through to its built-in provider discovery once a main provider is set, which is why the table above is the whole model-call path.
+
+What Local Fleet does not own it does not edit: a side task with its own `api_key`, a cloud entry someone adds back, a different delegation backend or a primary changed by hand (routing pauses rather than fight it). Each of those makes the status **not in force**, named in `hermes fleet private status`, the doctor, a banner on the Local Fleet page and the chip (*private not in force*). Local Fleet never reports it in force while one of them is there.
+
+It is not air-gapping: tools such as web search, the browser, MCP servers, image generation and speech still use the internet, and so can anything that calls a model outside Hermes's routing (another plugin's own HTTP calls).
 
 ## Subagents on the fleet
 
@@ -265,8 +276,10 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 ## Disclosures
 
 - **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), Ollama's `/api/show` for each of your models on each box at most hourly (readiness), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
-- **Files**: reads and writes `fleet.json`, `state.json`, `events.jsonl` (the flight recorder, last 400 events) and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory; writes the config keys listed above, plus `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` blocks (`aux on/off`, restored on off).
-- **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`), with a speed bench when one is due. `hermes fleet watch` runs only when you start it. Observer hooks (`post_api_request`, `api_request_error`, `post_auxiliary_call`) append one line per call.
+- **Files**: reads and writes `fleet.json`, `state.json`, `events.jsonl` (the flight recorder, last 400 events; addresses are masked before they are stored) and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory.
+- **Config writes**: `model.provider`, `model.default`, `model.base_url`, `model.api_mode`, `model.key_env` (the original primary is saved; `restore` puts it back); one appended `fallback_providers` entry for your cloud model; on request `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` `provider`, `model`, `base_url`, `fallback_chain` (`aux on/off`; the previous blocks come back on off, and a task holding its own `api_key` is never taken over); with `private on`, removal of non-local `fallback_providers` entries (put back on off), `delegation.backend: fleet` (previous backend put back on off) and side tasks without a cloud `fallback_chain`. Its own settings live under `plugins.entries.local-fleet.settings`.
+- **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`), with a speed bench when one is due. `hermes fleet watch` runs only when you start it. Observer hooks (`post_api_request`, `api_request_error`, `post_auxiliary_call`) append one line per call; `on_session_start` runs the background probe.
+- **Privacy setting** (`hermes fleet privacy on`): every output path (CLI text and JSON, `/fleet`, the agent tools, the Desktop backend's responses and errors, the snapshot export) drops address fields and masks URLs, IP addresses, host:port, LAN and tailnet names and the boxes' own hosts in any text, probe errors included.
 - **Credentials**: none stored. Optional per-box keys are read by env var name through Hermes's secret resolver.
 - **Plain HTTP**: Ollama and vLLM usually serve plain HTTP. `doctor` warns if a box's URL is plain HTTP to a public address; keep boxes on your LAN, a tailnet or behind TLS.
 
@@ -280,9 +293,12 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - **A standalone plugin.** An in-tree `hermes dgx` proposal (hermes-agent PR #28009) was closed in favour of plugins; Local Fleet is that shape.
 - **Not mixture-of-agents.** Plugins such as hermes-local-moa combine models for quality; Local Fleet picks where the one model runs.
 
-## Known limitations (v0.1.0)
+## Known limitations (v0.2.0)
 
-- Continuous switching needs `hermes fleet watch` running (see *Keeping it current*).
+- Continuous switching needs `hermes fleet watch` running (see *Keeping it current*). The doctor judges that from the loop's own heartbeat.
+- Private inference covers Hermes's model routing only (see its table); it is not air-gapping.
+- State saved by v0.1.0 before the literal-key guard may still hold a side-task key in `state.json`; the doctor says so, and `hermes fleet aux off` puts it back in config and drops it. Nothing scrubs it silently.
+- The savings baseline is the model you name with `hermes fleet price … --model`; prices entered before 0.2.0 show it as not recorded.
 - If loading a model on the new box fails during a switch, the switch still happens and the toast says why; it does not yet try the next box instead.
 - Load for Ollama boxes counts models in memory; it cannot see other GPU work (training jobs). Speeds are snapshots.
 - Clusters are shown and routed, not created; the interconnect label is what you declare.

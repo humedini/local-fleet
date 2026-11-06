@@ -31,7 +31,7 @@ def current_primary(cfg: dict | None = None) -> dict:
 
 def model_block(target: dict, node: dict | None = None) -> dict:
     """The `model:` keys a decision target stands for."""
-    if target["kind"] == "local":
+    if target["kind"] in ("local", "refused"):  # refused: held on a box so calls fail, never cloud
         block = {"provider": "custom", "default": target["model"], "base_url": target["base_url"],
                  "api_mode": "chat_completions"}
         if node and node.get("api_key_env"):

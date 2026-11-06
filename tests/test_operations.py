@@ -149,7 +149,9 @@ def test_doctor_checks_have_fixes(hermes):  # noqa: F811
 
 
 @respx.mock
-def test_private_inference_refuses_cloud_everywhere(hermes):  # noqa: F811
+def test_private_inference_keeps_local_named_providers_and_holds_the_primary(hermes):  # noqa: F811
+    """Narrow: a named provider pointing at a box stays on the chain; the full transition matrix
+    (cloud primary, side tasks, unmanaged keys, delegation, restore, drift) is in test_private.py."""
     from local_fleet import delegation
     boxes()
     engine.apply_policy()                                    # routed to gx10, cloud entry added

@@ -121,13 +121,15 @@ def _median(xs):
     return xs[len(xs) // 2] if xs else None
 
 
-def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: float | None = None) -> dict:
+def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: float | None = None,
+              baseline: str = "") -> dict:
     """Per-box and fleet totals over `lines` (one week by default).
 
     Per box: calls, errors, tokens, `live` (calls in the last 90 s), effective tok/s (median of
     the last 20 successful calls with output; includes prompt processing and queueing, so it is
     lower than a bench's decode speed) and median latency. Fleet: local vs cloud tokens and what
-    the local tokens would have cost at the given per-million prices (input, output).
+    the local tokens would have cost at the given per-million prices (input, output) of `baseline`,
+    the cloud model the user said those prices are for ("" when not recorded).
     """
     now = now or time.time()
     boxes: dict[str, dict] = {}
@@ -174,6 +176,9 @@ def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: 
                 "local_in": local_in, "local_out": local_out, "aux_in": aux_in, "aux_out": aux_out,
                 "main_in": local_in - aux_in, "main_out": local_out - aux_out,
                 "price_in_per_m": price_in, "price_out_per_m": price_out,
+                "baseline": {"model": baseline or None, "rates": "entered by you (hermes fleet price)",
+                             "source": "recorded with the prices" if baseline else
+                                       "not recorded: re-enter the prices with --model provider/model"},
                 "saved_in": round(local_in * price_in / 1e6, 4), "saved_out": round(local_out * price_out / 1e6, 4),
                 "calls_local": calls_local, "calls_local_counted": calls_local_counted,
                 "coverage": round(calls_local_counted / calls_local, 3) if calls_local else None,

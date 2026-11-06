@@ -1,5 +1,5 @@
 name: local-fleet
-version: 0.1.0
+version: 0.2.0
 manifest_version: 2
 api_version: 1
 description: Local inference fleet for Hermes (DGX Spark, Ollama, vLLM, LiteLLM) — health probes, freest-box routing, prefer-local / prefer-cloud / auto, cloud failover and failback, Desktop chip and /fleet
@@ -106,7 +106,7 @@ config_schema:
     type: bool
     default: false
     label: Private inference
-    description: Route Hermes's model calls only to your registered boxes; refuse rather than use cloud (set with hermes fleet private on). Not air-gapping - tools may still use the internet.
+    description: Keep Hermes's model calls (primary, fallback_providers, side tasks, subagents) on your registered boxes and fail rather than use cloud. Turn on with hermes fleet private on, which applies it and reports anything not in force; setting this value alone applies nothing. Not air-gapping - tools may still use the internet.
   hide_addresses:
     type: bool
     default: false
@@ -125,6 +125,11 @@ config_schema:
     type: float
     default: 0.0
     label: Cloud output price per million tokens
+  price_model:
+    type: str
+    default: ""
+    label: Cloud model the prices are for
+    description: provider/model, recorded by hermes fleet price (--model); the baseline shown with spend avoided
   currency:
     type: str
     default: "USD"

@@ -17,11 +17,17 @@ def hermes(tmp_path, monkeypatch):
            "fallback_providers": [], "plugins": {"entries": {}}}
     writes = []
 
+    def merge(dst, src):
+        for k, v in src.items():
+            if isinstance(v, dict) and isinstance(dst.get(k), dict):
+                merge(dst[k], v)
+            else:
+                dst[k] = copy.deepcopy(v)
+
     def save_config(c, preserve_keys=None, merge_existing=False, **kw):
         writes.append(copy.deepcopy(c))
         if merge_existing:
-            s = c["plugins"]["entries"]["local-fleet"]["settings"]
-            cfg["plugins"]["entries"].setdefault("local-fleet", {"settings": {}})["settings"].update(s)
+            merge(cfg, c)
         else:
             cfg.clear()
             cfg.update(copy.deepcopy(c))

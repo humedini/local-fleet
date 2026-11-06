@@ -9,7 +9,7 @@ import time
 from . import config_write, doctor, engine, render, store
 from .aux import DEFAULT_TASKS as AUX_DEFAULT, TASKS as AUX_TASKS
 from .constants import KINDS, MODES, OSES, VENDORS
-from .fleet import FleetError, public_node
+from .fleet import FleetError, now_iso, public_node
 from .render import decision_text, nodes_table, status_text, target_text
 
 
@@ -94,6 +94,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("input", type=float)
     p.add_argument("output", type=float)
     p.add_argument("--currency", default=None, help="ISO 4217 code (GBP, EUR, USD, …) or £ € $ ¥")
+    p.add_argument("--model", dest="price_model", help="the cloud model these prices are for, provider/model "
+                   "(default: your cloud backup); shown as the savings baseline")
     p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the least busy box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
@@ -168,6 +170,8 @@ def _watch(args) -> int:
     try:
         while True:
             d = engine.apply_policy(auto_bench=True)
+            # Evidence the loop is running, for the doctor: a probe by anything else does not count.
+            store.update_state(watch_at=now_iso(), watch_interval_s=interval)
             key = json.dumps(d.get("target"), sort_keys=True)
             stamp = time.strftime("%H:%M:%S")
             if key != last or d.get("applied"):
@@ -191,9 +195,7 @@ def snapshot_view(probe: bool = False) -> dict:
     snap = engine.snapshot()
     nodes = [public_node(n) for n in store.fleet().nodes]
     snap["nodes"] = nodes
-    if snap.get("hide_addresses"):
-        render.HIDE["on"] = True
-        snap = render.strip_addresses(snap)
+    snap = render.scrub(snap, bool(snap.get("hide_addresses")), store.fleet().nodes)
     snap["schema"] = 1
     return snap
 
@@ -201,7 +203,8 @@ def snapshot_view(probe: bool = False) -> dict:
 def stats_text() -> str:
     from . import traffic
     s = store.read_settings()
-    t = traffic.summarize(traffic.load(), (float(s["price_in_per_m"] or 0), float(s["price_out_per_m"] or 0)))
+    t = traffic.summarize(traffic.load(), (float(s["price_in_per_m"] or 0), float(s["price_out_per_m"] or 0)),
+                          baseline=s.get("price_model") or "")
     names = {n["id"]: n["name"] for n in store.fleet().nodes}
     lines = [f"  {'box':<12} {'calls':>6} {'errors':>6} {'tok/s':>7} {'latency':>8} {'tokens':>9}"]
     for nid, b in sorted(t["boxes"].items(), key=lambda kv: -kv[1]["calls"]):
@@ -215,12 +218,13 @@ def stats_text() -> str:
         b = t["breakdown"]
         cov = f"{b['coverage'] * 100:.0f}%" if b["coverage"] is not None else "-"
         lines.append(f"spend avoided this week: {store.format_money(t['saved'], s['currency'])}"
-                     f"  (vs {s.get('cloud_provider')}/{s.get('cloud_model') or '?'} at "
+                     f"  (vs {b['baseline']['model'] or 'a cloud model not recorded'} at "
                      f"{store.format_money(b['price_in_per_m'], s['currency'])} in / {store.format_money(b['price_out_per_m'], s['currency'])} out per million)")
         lines.append(f"  input {b['local_in']:,} tokens = {store.format_money(b['saved_in'], s['currency'])} · "
                      f"output {b['local_out']:,} = {store.format_money(b['saved_out'], s['currency'])} · "
                      f"side tasks {b['aux_in'] + b['aux_out']:,} of those")
         lines.append(f"  coverage: {b['calls_local_counted']} of {b['calls_local']} local calls reported token counts ({cov})")
+        lines.append(f"  baseline: {b['baseline']['model'] or '?'} ({b['baseline']['source']}); rates {b['baseline']['rates']}")
         lines.append(f"  not counted: {b['excluded']}")
         lines.append(f"  {b['caveat']}")
     else:
@@ -272,7 +276,7 @@ def _show_or_set(key: str, value, label: str) -> int:
 def main(args) -> int:
     cmd = getattr(args, "fleet_command", None) or "status"
     from . import render
-    render.HIDE["on"] = bool(store.read_settings().get("hide_addresses"))
+    render.configure(bool(store.read_settings().get("hide_addresses")), store.fleet().nodes)
     try:
         code = _dispatch(cmd, args)
     except FleetError as e:
@@ -337,6 +341,9 @@ def _dispatch(cmd: str, args) -> int:
             return 1
         store.write_setting("cloud_provider", args.provider)
         store.write_setting("cloud_model", args.model)
+        if store.read_settings().get("private_only"):
+            print(f"cloud set to {args.provider}/{args.model}; not added to fallback_providers while private inference is on")
+            return 0
         added = config_write.ensure_fallback(args.provider, args.model)
         print(f"cloud set to {args.provider}/{args.model}"
               f"{' and added to fallback_providers' if added else ' (already on fallback_providers)'}")
@@ -429,16 +436,26 @@ def _dispatch(cmd: str, args) -> int:
         except ValueError as e:
             print(f"✗ {e}")
             return 1
+        s = store.read_settings()
+        model = args.price_model or (f"{s['cloud_provider']}/{s['cloud_model']}" if s.get("cloud_model") else "")
         store.write_setting("price_in_per_m", args.input)
         store.write_setting("price_out_per_m", args.output)
         store.write_setting("currency", code)
-        print(f"cloud price set: {store.format_money(args.input, code)} in / {store.format_money(args.output, code)} out per million tokens")
+        store.write_setting("price_model", model)
+        print(f"cloud price set: {store.format_money(args.input, code)} in / {store.format_money(args.output, code)} out per million tokens"
+              f" for {model or 'an unnamed cloud model (add --model provider/model)'}")
         return 0
     if cmd == "aux":
         return _aux(args)
     if cmd == "private":
         if args.action == "status":
-            print(f"private inference: {'on' if store.read_settings().get('private_only') else 'off'}")
+            st = engine.private_status()
+            print("private inference: " + ("off" if not st["on"] else "on, in force" if st["in_force"] else "on, NOT fully in force"))
+            for p in st["problems"]:
+                print(f"  ✗ {p['what']}: {render.redact(p['detail'])}")
+            if st["on"]:
+                print(st["scope"])
+            return 0 if st["in_force"] or not st["on"] else 1
         else:
             print(engine.set_private(args.action == "on"))
         return 0

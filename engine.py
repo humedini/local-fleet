@@ -4,7 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from . import aux, config_write, events, readiness, store, traffic
+from . import aux, config_write, events, private, readiness, store, traffic
 from .warm import warm
 from .fleet import now_iso
 from .bench import bench_node
@@ -103,14 +103,25 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     return settings, f, results
 
 
+_AUX_OWNED = ("provider", "model", "base_url", "fallback_chain")
+_AUX_CREDENTIALS = ("api_key", "key_env", "api_key_env")
+
+
 def _aux_drift(applied: dict) -> list[str]:
-    """Side tasks whose block no longer points where Local Fleet put them."""
+    """Side tasks whose block is no longer what Local Fleet wrote: any owned routing field
+    (provider, model, base_url, fallback_chain) changed, or a credential field appeared (Local Fleet
+    never writes one). Values are compared, never copied, so a key someone adds is not stored."""
     node = store.fleet().find(applied.get("node_id") or "")
     aux_cfg = config_write._load().get("auxiliary") or {}
+    want = applied.get("block") or ({"base_url": node["base_url"], "model": applied.get("model")} if node else None)
+    fields = _AUX_OWNED if applied.get("block") else ("base_url", "model")  # older state: what it recorded
     out = []
     for t in applied.get("tasks") or []:
         b = aux_cfg.get(t) or {}
-        if node is None or b.get("base_url") != node["base_url"] or b.get("model") != applied.get("model"):
+        if node is None or want is None:
+            out.append(t)
+        elif any((b.get(k) or None) != (want.get(k) or None) for k in fields) \
+                or any(b.get(k) for k in _AUX_CREDENTIALS):
             out.append(t)
     return out
 
@@ -119,10 +130,10 @@ def drift(state: dict | None = None) -> list[dict]:
     """What Local Fleet wrote that is no longer in Hermes's config: [{"what", "detail"}]."""
     state = state if state is not None else store.load_state()
     out = []
-    if state.get("paused"):
+    if state.get("paused") and not state.get("relinquished"):
         out.append({"what": "primary", "detail": "the primary model was changed outside Local Fleet; routing is paused"})
     entry = state.get("fallback_ensured")
-    if entry and not config_write.has_fallback(config_write.fallback_chain(), entry.get("provider"), entry.get("model")):
+    if entry and not store.read_settings().get("private_only") and not config_write.has_fallback(config_write.fallback_chain(), entry.get("provider"), entry.get("model")):
         out.append({"what": "fallback", "detail": f"your cloud entry {entry['provider']}/{entry['model']} was removed from fallback_providers"})
     if state.get("aux_applied"):
         changed = _aux_drift(state["aux_applied"])
@@ -148,7 +159,7 @@ def relinquish() -> str:
     """Stop managing Hermes's routing, leaving the config exactly as it is now."""
     with store.transaction():
         state = store.load_state()
-        state.update({"applied": None, "paused": True, "aux_applied": None, "fallback_ensured": None})
+        state.update({"applied": None, "paused": True, "relinquished": True, "aux_applied": None, "fallback_ensured": None})
         state.pop("aux_paused", None)
         state.pop("original_model", None)
         store.save_state(state)
@@ -186,25 +197,27 @@ def _cloud_ready(target: dict) -> bool:
 
 
 def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = False,
-                 auto_bench: bool = False, aux_follow: bool = False) -> dict:
+                 auto_bench: bool = False, aux_follow: bool = False, resume: bool = False) -> dict:
     """Probe, decide and, unless dry_run, write the primary when it changed.
 
     `pin` is a node id/name to use now and keep while it stays healthy (`hermes fleet use gx10`);
-    `unpin` drops any pin first (`use --freest`, a mode change).
+    `unpin` drops any pin first (`use --freest`, a mode change); `resume` takes routing back after
+    a pause like they do, keeping any pin (turning private inference on).
     """
     with store.transaction():
         settings, f, results = probe(auto_bench=auto_bench)
         state = store.load_state()
         manual = _changed_outside(state)
-        if manual and not (pin or unpin):
+        if manual and not (pin or unpin or resume):
             # The user changed the primary themselves: respect it. Routing stays paused until they
             # choose a box or Auto-pick again (pin / unpin); the saved original is stale now.
             state.pop("applied", None)
             state.pop("original_model", None)
             state["paused"] = True
             store.save_state({**store.load_state(), "applied": None, "original_model": None, "paused": True})
-        if pin or unpin:
+        if pin or unpin or resume:
             state.pop("paused", None)
+            state.pop("relinquished", None)
         elif state.get("paused"):
             dry_run = True
         applied_now = dict(state.get("applied") or {})
@@ -221,14 +234,10 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         target = decision["target"]
         if pin and target.get("node_id") != current["node_id"]:
             decision["warning"] = f"{pin} is not available; picked a box automatically instead"
+        if target["kind"] == "cloud" and settings.get("private_only"):  # never reached by decide(); a guard
+            target = decision["target"] = {"kind": "refused", "reason": "private inference refuses cloud"}
         if target["kind"] == "refused":
-            decision["applied"] = False
-            decision["warning"] = target["reason"]
-            if not dry_run and (state.get("last_decision") or {}).get("target", {}).get("kind") != "refused":
-                events.record("refused", "private inference: no box available, cloud refused")
-            state["last_decision"] = decision
-            store.save_state({**store.load_state(), "last_decision": decision})
-            return decision
+            return _refuse(settings, f, results, decision, state, dry_run, aux_follow)
         if target["kind"] == "cloud" and not _cloud_ready(target):
             decision["applied"] = False
             decision["warning"] = ("no cloud target set (hermes fleet setup, or "
@@ -288,8 +297,40 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         merged = {**store.load_state(), **state}
         if not state.get("paused"):
             merged.pop("paused", None)
+            merged.pop("relinquished", None)
         store.save_state(merged)
         return decision
+
+
+def _refuse(settings, f, results, decision, state, dry_run, aux_follow) -> dict:
+    """Private inference and no box available: fail closed. If the primary is not on a registered box
+    (a cloud primary from before, or set elsewhere and then resumed), put it on the box the decision
+    holds, so Hermes's calls fail instead of reaching cloud; side tasks stay on their box too."""
+    target = decision["target"]
+    decision["applied"] = False
+    decision["warning"] = target["reason"]
+    was_refused = (state.get("last_decision") or {}).get("target", {}).get("kind") == "refused"
+    held = private.primary_is_local(config_write._load(), private.local_urls(f.nodes))
+    if not dry_run and not held and target.get("node_id"):
+        node = f.find(target["node_id"])
+        before = config_write.set_primary(config_write.model_block(target, node))
+        state.setdefault("original_model", before)
+        state["applied"] = {k: target[k] for k in ("kind", "node_id", "node_name", "base_url", "model") if target.get(k) is not None}
+        decision["applied"] = True
+        events.record("refused", f"private inference: no box available; primary held on {node.get('title') or node['name']} "
+                                 "so calls fail instead of reaching cloud")
+    elif not dry_run and not was_refused:
+        events.record("refused", "private inference: no box available, cloud refused" + ("" if held else
+                      "; no registered box to hold the primary on"))
+    if not dry_run or aux_follow:
+        decision["aux"] = _follow_aux(settings, f, results, decision, state)
+    state["last_decision"] = decision
+    merged = {**store.load_state(), **state}
+    if not state.get("paused"):
+        merged.pop("paused", None)
+        merged.pop("relinquished", None)
+    store.save_state(merged)
+    return decision
 
 
 def _follow_aux(settings, f, results, decision, state) -> str | None:
@@ -319,19 +360,28 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
                and check(n, results.get(n["id"]), want_model, excluded, min_ctx)[0]]
     node = min(keyless, key=lambda n: score(n, results[n["id"]], settings.get("prefer_labels") or (), want_model),
                default=None)
-    if node is None:
+    private_on = bool(settings.get("private_only"))
+    if node is None and private_on and current:
+        # Private inference: never hand side tasks back to settings that may use cloud; they stay
+        # on their box (and fail while it is down), now without a cloud fallback_chain.
+        node = f.find(current["node_id"])
+        model = current.get("model") or ""
+    elif node is None:
         if current:
             aux.apply(current["tasks"], None, state.get("aux_original") or {})
             state["aux_applied"] = None
             return "no healthy box: side tasks back on their own settings"
         return None
-    model = model_for(node, results.get(node["id"]) or {}, decision.get("tier_model") or "")
-    want = {"tasks": tasks, "node_id": node["id"], "node_name": node["name"], "model": model}
+    else:
+        model = model_for(node, results.get(node["id"]) or {}, decision.get("tier_model") or "")
+    if node is None:
+        return None
+    blk = aux.block(node, model, None if private_on else settings.get("cloud_provider"),
+                    None if private_on else settings.get("cloud_model"))
+    want = {"tasks": tasks, "node_id": node["id"], "node_name": node["name"], "model": model, "block": blk}
     if current == want:
         return f"side tasks unchanged{note}" if keyed else None
-    private = bool(settings.get("private_only"))
-    before = aux.apply(tasks, aux.block(node, model, None if private else settings.get("cloud_provider"),
-                                        None if private else settings.get("cloud_model")), None)
+    before = aux.apply(tasks, blk, None)
     original = state.get("aux_original") or {}
     for t in tasks:
         original.setdefault(t, before.get(t, {}))
@@ -402,27 +452,60 @@ def include(ref: str) -> dict:
     return apply_policy(dry_run=not store.load_state().get("applied"))
 
 
+def private_status() -> dict:
+    """Private inference as it actually stands in Hermes's config (see private.py)."""
+    return private.status(config_write._load(), store.fleet().enabled(), store.delegation_backend(),
+                          bool(store.read_settings().get("private_only")))
+
+
 def set_private(on: bool) -> str:
-    """Private inference on: cloud entries come off fallback_providers (kept to put back), side
-    tasks lose their cloud fallback, subagents refuse cloud, and with no box available Local Fleet
-    refuses instead of switching to cloud. Off: the entries go back."""
-    local_urls = {config_write._norm(n["base_url"]) for n in store.fleet().nodes}
+    """Private inference on: Local Fleet takes routing (even if it was off or paused) and fails closed
+    with no box available; cloud entries come off fallback_providers and side tasks lose their cloud
+    fallback (both put back when off); subagents move to the fleet backend, which refuses cloud (the
+    previous backend comes back when off, unless it was changed meanwhile). Then reports, from the
+    config as it now is, whether every covered path is held: anything Local Fleet does not own (a side
+    task with its own key, the legacy fallback_model) is reported, not edited."""
+    f = store.fleet()
+    if on and not f.enabled():
+        return "private inference not turned on: there is no enabled box to keep Hermes on (hermes fleet add)"
+    urls = private.local_urls(f.nodes)
+    notes = []
     with store.transaction():
         state = store.load_state()
         if on:
-            removed = config_write.remove_non_local_fallbacks(local_urls)
-            state["private_removed"] = (state.get("private_removed") or []) + removed
-            state["aux_applied"] = state.get("aux_applied") and {**state["aux_applied"], "model": None}  # re-apply without cloud
+            removed = config_write.remove_non_local_fallbacks(urls)
+            kept = state.get("private_removed") or []
+            state["private_removed"] = kept + [e for e in removed if e not in kept]
+            if removed:
+                notes.append(f"{len(removed)} cloud fallback entr{'y' if len(removed) == 1 else 'ies'} taken off (restored when off)")
+            backend = store.delegation_backend()
+            if backend != "fleet":
+                state.setdefault("private_prev_delegation", backend)
+                store.set_delegation_backend("fleet")
+                notes.append(f"subagents moved from the {backend} backend to fleet")
         else:
-            config_write.restore_fallbacks(state.pop("private_removed", None) or [])
+            back = state.pop("private_removed", None) or []
+            config_write.restore_fallbacks(back)
+            if back:
+                notes.append(f"{len(back)} fallback entr{'y' if len(back) == 1 else 'ies'} restored")
+            prev = state.pop("private_prev_delegation", None)
+            if prev and store.delegation_backend() == "fleet":
+                store.set_delegation_backend(prev)
+                notes.append(f"subagents back on the {prev} backend")
+            elif prev:
+                notes.append(f"subagents left on the {store.delegation_backend()} backend (changed since)")
         store.save_state(state)
     store.write_setting("private_only", on)
-    events.record("private", "private inference on: cloud refused" if on else "private inference off: cloud fallback restored")
-    d = apply_policy(dry_run=not store.load_state().get("applied"), aux_follow=True)
-    n = len(state.get("private_removed") or []) if on else 0
-    return (f"private inference on: {n} cloud fallback entr{'y' if n == 1 else 'ies'} taken off (restored when off). "
-            "Only Hermes's model calls are covered; tools such as web search still use the internet." if on
-            else "private inference off: cloud fallback entries restored") + (f"\n{d.get('warning')}" if d.get("warning") else "")
+    events.record("private", "private inference on: cloud refused" if on else "private inference off: cloud allowed again")
+    routed = bool(store.load_state().get("applied"))
+    d = apply_policy(dry_run=not (on or routed), resume=on, aux_follow=True)
+    st = private_status()
+    if on:
+        head = "private inference on" + (": in force" if st["in_force"] else ": NOT fully in force")
+        problems = [f"  ✗ {p['what']}: {p['detail']}" for p in st["problems"]]
+        return "\n".join([head + (f" ({'; '.join(notes)})" if notes else "")] + problems + [st["scope"]]
+                         + ([d["warning"]] if d.get("warning") else []))
+    return "private inference off" + (f" ({'; '.join(notes)})" if notes else "") + (f"\n{d['warning']}" if d.get("warning") else "")
 
 
 def set_keep(on: bool) -> str:
@@ -485,7 +568,8 @@ def snapshot() -> dict:
     healthy = [n for n in f.enabled() if (n.get("last_health") or {}).get("status") in ("ok", "degraded")]
     primary = {k: v for k, v in config_write.current_primary().items() if k != "key_env"}
     stats = traffic.summarize(traffic.load(), (float(settings.get("price_in_per_m") or 0),
-                                               float(settings.get("price_out_per_m") or 0)))
+                                               float(settings.get("price_out_per_m") or 0)),
+                              baseline=settings.get("price_model") or "")
     return {
         "mode": settings["mode"],
         "label": label,
@@ -505,6 +589,10 @@ def snapshot() -> dict:
         "keep_loaded": bool(settings.get("keep_loaded")),
         "hide_addresses": bool(settings.get("hide_addresses")),
         "private_only": bool(settings.get("private_only")),
+        "private": private_status(),
+        "min_context": int(settings.get("min_context") or readiness.DEFAULT_MIN_CONTEXT),
+        "probe_interval_s": float(settings.get("probe_interval_s") or 30),
+        "watch_at": state.get("watch_at"),
         "paused": bool(state.get("paused")),
         "exclusions": {k: v for k, v in (state.get("exclusions") or {}).items()},
         "events": events.timeline(40),

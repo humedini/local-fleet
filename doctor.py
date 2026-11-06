@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from . import config_write, store
-from .engine import active_exclusions, drift, model_tiers, probe
+from .engine import active_exclusions, drift, model_tiers, private_status, probe
 from .readiness import DEFAULT_MIN_CONTEXT, verdict
 from .render import redact, target_text
 
@@ -26,7 +26,37 @@ def _plugin_enabled() -> bool | None:
         return None
 
 
+def is_private_address(url: str) -> bool:
+    """LAN, loopback, tailnet (100.64/10, *.ts.net) or a LAN-style name: fine for plain HTTP."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    host = (urlsplit(url).hostname or "").lower()
+    if host == "localhost" or host.endswith((".local", ".lan", ".home", ".internal", ".home.arpa", ".ts.net")):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return "." not in host  # a bare LAN hostname
+    return not ip.is_global  # LAN, loopback, link-local, CGNAT/tailnet 100.64/10, reserved ranges
+
+
+def _watch_check(before: dict, applied) -> dict | None:
+    """Is a watch loop keeping routing current? Judged from the loop's own heartbeat, read before
+    the doctor probes: the doctor's probe (or any other) is not evidence that anything keeps running."""
+    if not applied:
+        return None
+    at, every = before.get("watch_at"), float(before.get("watch_interval_s") or 30)
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(at)).total_seconds() if at else None
+    if age is not None and age <= max(3 * every, 120):
+        return _check("watch", "ok", f"Watch loop running (last tick {int(age)} s ago)")
+    return _check("watch", "info", "Nothing is keeping routing current" if age is None else
+                  f"The watch loop has not ticked for {int(age // 60)} min",
+                  "Switching between boxes continuously needs the watch loop (a probe from here or the Desktop does not count).",
+                  {"command": "hermes fleet watch --interval 30"})
+
+
 def checks() -> list[dict]:
+    before = store.load_state()  # evidence from before this doctor run's own probe
     settings, f, results = probe()
     state = store.load_state()
     out = []
@@ -44,6 +74,10 @@ def checks() -> list[dict]:
     for n in f.enabled():
         h = results.get(n["id"]) or {}
         name = n.get("title") or n["name"]
+        if n["base_url"].lower().startswith("http://") and not is_private_address(n["base_url"]):
+            out.append(_check(f"http:{n['id']}", "warn", f"{name} uses plain HTTP to a public address",
+                              "Prompts and replies cross the internet unencrypted. Use HTTPS, a tailnet or your LAN.",
+                              {"command": f"hermes fleet rm {n['name']} && hermes fleet add --name {n['name']} --url https://…"}))
         if h.get("status") not in ("ok", "degraded"):
             out.append(_check(f"down:{n['id']}", "error", f"{name} is not answering", redact(h.get("detail") or ""),
                               {"action": "probe", "label": "Probe again"}))
@@ -75,36 +109,31 @@ def checks() -> list[dict]:
     if not (cp and cm):
         out.append(_check("cloud", "error", "No cloud backup set", "Used when every box is down, and by prefer-cloud mode.",
                           {"command": "hermes fleet cloud <provider> <model>"}))
-    elif not config_write.has_fallback(config_write.fallback_chain(), cp, cm):
+    elif not settings.get("private_only") and not config_write.has_fallback(config_write.fallback_chain(), cp, cm):
         out.append(_check("fallback", "warn", f"{cp}/{cm} is not on fallback_providers",
                           "Hermes would have no cloud safety net within a turn.", {"action": "reapply", "label": "Reapply"}))
     for d in drift(state):
         out.append(_check(f"drift:{d['what']}", "warn", f"Changed outside Local Fleet: {d['what']}", d["detail"],
                           {"action": "reapply", "label": "Reapply", "alt": {"action": "relinquish", "label": "Stop managing"}}))
-    if settings.get("private_only"):
-        cfg = config_write._load()
-        local_urls = {config_write._norm(n["base_url"]) for n in f.nodes}
-        cloud = [e for e in config_write.fallback_chain() if not config_write.is_local_entry(e, local_urls, cfg)]
-        out.append(_check("private", "error" if cloud else "ok",
-                          "Private inference: cloud entries on fallback_providers" if cloud else "Private inference on: no cloud fallback",
-                          ", ".join(f"{e.get('provider')}/{e.get('model')}" for e in cloud) if cloud else
-                          "Covers Hermes's model calls Local Fleet routes; tools such as web search still use the internet.",
-                          {"command": "hermes fleet private on   (takes them off again)"} if cloud else None))
-        aux_cfg = cfg.get("auxiliary") or {}
-        others = [t for t, b in aux_cfg.items() if isinstance(b, dict) and b.get("provider") not in (None, "", "auto", "main", "ollama", "vllm", "custom")
-                  and not config_write.is_local_entry(b, local_urls, cfg)]
-        if others:
-            out.append(_check("private-aux", "warn", "Side tasks still on cloud providers", ", ".join(sorted(others)),
-                              {"command": "hermes fleet aux on --tasks " + ",".join(sorted(others))}))
+    st = private_status()
+    if st["on"]:
+        out.append(_check("private", "ok" if st["in_force"] else "error",
+                          "Private inference in force" if st["in_force"] else "Private inference is NOT fully in force",
+                          st["scope"] if st["in_force"] else "; ".join(f"{p['what']}: {p['detail']}" for p in st["problems"]),
+                          None if st["in_force"] else {"command": "hermes fleet private on   (re-applies what Local Fleet owns; "
+                                                                  "fix the rest in config.yaml)"}))
+    if any((b or {}).get("api_key") for b in (state.get("aux_original") or {}).values() if isinstance(b, dict)):
+        out.append(_check("old-key", "warn", "Local Fleet's state holds a side-task API key from an older version",
+                          "Saved when side tasks were first moved, before keys were left alone. Turning side tasks off "
+                          "puts it back in config.yaml and drops it from Local Fleet's state.",
+                          {"command": "hermes fleet aux off"}))
     applied = state.get("applied")
     out.append(_check("routing", "ok" if applied else "info",
                       f"Routed to {target_text(applied)}" if applied else "Routing is off: Hermes uses its own primary",
                       "" if applied else "Auto-pick box turns routing on.", None if applied else {"action": "use", "label": "Auto-pick box"}))
-    last = state.get("last_probe_at")
-    age = (datetime.now(timezone.utc) - datetime.fromisoformat(last)).total_seconds() if last else None
-    if applied and (age is None or age > 900):
-        out.append(_check("watch", "info", "Nothing is keeping routing current",
-                          "Switching between boxes continuously needs the watch loop.", {"command": "hermes fleet watch --interval 30"}))
+    w = _watch_check(before, applied)
+    if w:
+        out.append(w)
     return out
 
 
@@ -113,7 +142,7 @@ def run() -> tuple[bool, list[str]]:
     icon = {"ok": "✓", "info": "·", "warn": "!", "error": "✗"}
     lines = ["local-fleet doctor"]
     for c in items:
-        lines.append(f"  {icon[c['level']]} {c['title']}" + (f": {c['detail']}" if c["detail"] else ""))
+        lines.append(f"  {icon[c['level']]} {redact(c['title'])}" + (f": {redact(c['detail'])}" if c["detail"] else ""))
         fix = c.get("fix") or {}
         if fix.get("command"):
             lines.append(f"      fix: {fix['command']}")

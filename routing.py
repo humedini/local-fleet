@@ -81,6 +81,22 @@ def check(node: dict, snap: dict | None, want: str, excluded: dict | None = None
     return verdict((node.get("caps") or {}).get(want), min_context)
 
 
+def _refused(nodes, results, want, current) -> dict:
+    """Private inference with no box available: refuse cloud, and hold the primary on a registered box
+    (the one Hermes is on, else one that has the model, else the first enabled) so Hermes's calls fail
+    rather than reach cloud, and resume there by themselves when it is back."""
+    enabled = [n for n in nodes if n.get("enabled", True)]
+    hold = (next((n for n in enabled if current.get("kind") in ("local", "refused") and n["id"] == current.get("node_id")), None)
+            or next((n for n in enabled if want and want in ((results.get(n["id"]) or {}).get("models") or [])), None)
+            or (enabled[0] if enabled else None))
+    t = {"kind": "refused", "reason": "private inference: no registered box available, so Local Fleet refuses cloud; "
+                                      "Hermes's calls fail until a box is back"}
+    if hold is not None:
+        model = want or (current.get("model") if current.get("node_id") == hold["id"] else "") or ""
+        t.update({"node_id": hold["id"], "node_name": hold["name"], "base_url": hold["base_url"], "model": model})
+    return t
+
+
 def _keep_current(current, nodes, results, freest, want, settings, ok) -> bool:
     """Stay on a healthy active node unless the freest is more than switch_margin freer."""
     if current.get("kind") != "local":
@@ -144,15 +160,14 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
     elif mode == "prefer-cloud" and not settings.get("private_only"):
         target = _cloud(settings, "prefer-cloud mode")
     elif freest is None and settings.get("private_only"):
-        target = {"kind": "refused", "reason": "private inference: no registered box available, so Local Fleet "
-                                               "refuses cloud; Hermes's calls will fail until a box is back"}
+        target = _refused(nodes, results, want, current)
     elif freest is None:
         why = (f"no box available with {' or '.join(model_tiers(settings))}" if want and nodes
                else "no box available")
         target = _cloud(settings, f"{why}, using cloud")
         target["via"] = "failover"
     elif (current.get("kind") == "cloud" and current.get("via") == "failover"
-          and not settings.get("failback_enabled", True)):
+          and not settings.get("failback_enabled", True) and not settings.get("private_only")):
         target = _cloud(settings, f"{freest['name']} is back, but switching back is off")
         target["via"] = "failover"
     elif _keep_current(current, nodes, results, freest, want, settings, ok):
@@ -205,8 +220,6 @@ def _candidates(nodes, results, verdicts, labels, want, target, freest) -> list[
 def same_target(target: dict, current: dict) -> bool:
     if target.get("kind") != current.get("kind"):
         return False
-    if target["kind"] == "refused":
-        return True  # refusing changes nothing in config
-    if target["kind"] == "local":
+    if target["kind"] in ("local", "refused"):
         return (target.get("node_id"), target.get("model")) == (current.get("node_id"), current.get("model"))
     return (target.get("provider"), target.get("model")) == (current.get("provider"), current.get("model"))

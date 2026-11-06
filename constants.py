@@ -36,12 +36,15 @@ DEFAULTS = {
     "hide_addresses": False,
     # Private inference: Hermes's model calls that Local Fleet routes go only to registered boxes;
     # when none is available Local Fleet refuses instead of using cloud. Not air-gapping.
-    "private_only": False,
+    "private_only": False,  # see private.py for what is enforced and checked
     # Auxiliary tasks to run on the least busy box (hermes fleet aux on); empty = off.
     "aux_tasks": [],
     # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.
     "price_in_per_m": 0.0,
     "price_out_per_m": 0.0,
+    # The cloud model those prices are for ("provider/model"), recorded when they are entered: the
+    # savings baseline, shown with the figure. "" = not recorded (shown as unknown, never guessed).
+    "price_model": "",
     "currency": "USD",  # ISO 4217 code; the Desktop formats amounts in the viewer's locale
 }
 

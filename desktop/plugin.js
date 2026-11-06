@@ -89,6 +89,7 @@ const CSS = `
 .hs-why-table th{text-align:left;font-weight:500;color:var(--ui-text-tertiary);padding:4px 6px;border-bottom:1px solid var(--ui-stroke-tertiary)}
 .hs-why-table td{padding:6px;border-bottom:1px solid var(--ui-stroke-tertiary);vertical-align:middle}
 .hs-why-table tr[data-chosen=true] td{color:${SPARK_GREEN};font-weight:600}
+.hs-why-table td[data-stale=true]{color:var(--ui-orange,#df6500)}
 .hs-why-table tr[data-out=true] td{color:var(--ui-text-tertiary)}
 .hs-why-table tr[data-focus=true] td{background:var(--ui-row-active-background)}
 .hs-ready{margin-top:4px}
@@ -276,6 +277,7 @@ function routeLine(s) {
   const a = s.applied || {}
   if (a.kind === 'local') return ['Routed to ', dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name, ` · ${a.model || ''}`]
   if (a.kind === 'cloud') return ['Routed to cloud ', `${a.provider}/${a.model}`, a.via === 'failover' ? ' · failover' : '']
+  if (a.kind === 'refused') return ['Private inference: no box up · primary held on ', a.node_name || '?', ' · calls fail until a box is back']
   const p = s.primary || {}
   if (s.paused) return ['Paused: you changed the model yourself · Hermes uses ', p.provider || 'its own primary', ' · Auto-pick box resumes']
   return ['Not routed by Local Fleet · Hermes uses ', p.provider || 'its own primary', p.default ? ` · ${p.default}` : '']
@@ -286,9 +288,10 @@ function chip(s, failed) {
   if (!s) return { tone: '', text: 'fleet' }
   if (!s.nodes || !s.nodes.length) return { tone: '', text: 'fleet · no boxes' }
   const a = s.applied || {}
+  if (s.private_only && ((s.last_decision || {}).target || {}).kind === 'refused') return { tone: 'bad', text: 'fleet · private · no box' }
+  if (s.private_only && s.private && !s.private.in_force) return { tone: 'warn', text: 'fleet · private not in force' }
   if (s.down) return { tone: 'bad', text: 'fleet · all down' }
   if (s.paused) return { tone: 'warn', text: 'fleet · paused' }
-  if (s.private_only && ((s.last_decision || {}).target || {}).kind === 'refused') return { tone: 'bad', text: 'fleet · private · no box' }
   if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name}${s.private_only ? ' · private' : ''}` }
   if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'fleet · cloud' }
   return { tone: '', text: `fleet · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
@@ -806,6 +809,13 @@ function Drawer({ title, onClose, children }) {
   ] })
 }
 
+// How old a box's probe is, against the probe interval: fresh, stale (older than three intervals) or never.
+function fresh(s, iso) {
+  if (!iso) return 'never'
+  const age = (Date.now() - Date.parse(iso)) / 1000
+  return age > 3 * (s.probe_interval_s || 30) ? 'stale' : 'fresh'
+}
+
 function WhyPanel({ s, focus, onRecheck, busy }) {
   const d = s.decision || s.last_decision || {}
   const cands = d.candidates || []
@@ -816,12 +826,12 @@ function WhyPanel({ s, focus, onRecheck, busy }) {
   const t = d.target || {}
   return jsxs('div', { className: 'hs-why', children: [
     jsxs('div', { className: 'hs-why-head', children: [
-      jsx('div', { className: 'hs-why-route', children: t.kind === 'cloud' ? `Cloud · ${t.provider}/${t.model}` : `${t.node_name || '—'} · ${t.model || ''}` }),
+      jsx('div', { className: 'hs-why-route', children: t.kind === 'cloud' ? `Cloud · ${t.provider}/${t.model}` : t.kind === 'refused' ? `Refused (private inference)${t.node_name ? ` · held on ${t.node_name}` : ''}` : `${t.node_name || '—'} · ${t.model || ''}` }),
       jsx('div', { children: d.reason }),
       jsx('small', { children: `mode ${d.mode}${d.pinned ? ' · pinned' : ''} · model ${d.tier_model || '(each box its own)'}${d.tier ? ` · fallback tier ${d.tier}` : ''} · decided ${ago(d.at)}` })
     ] }),
     jsx('table', { className: 'hs-why-table', children: jsxs('tbody', { children: [
-      jsxs('tr', { children: ['', 'Box', 'Load', 'Latency', 'tok/s', 'Free', 'Verdict'].map(h => jsx('th', { children: h }, h)) }),
+      jsxs('tr', { children: ['', 'Box', 'Load', 'Latency', 'tok/s', 'Free', 'Probed', 'Verdict'].map(h => jsx('th', { children: h }, h)) }),
       ...cands.map(c => jsxs('tr', { 'data-chosen': c.chosen, 'data-out': !c.eligible, 'data-focus': focus === c.id, children: [
         jsx('td', { children: c.chosen ? '→' : '' }),
         jsx('td', { children: c.title || c.name }),
@@ -829,6 +839,7 @@ function WhyPanel({ s, focus, onRecheck, busy }) {
         jsx('td', { children: c.latency_ms == null ? '—' : `${c.latency_ms} ms` }),
         jsx('td', { children: c.tps || '—' }),
         jsx('td', { children: c.free_bytes ? `${Math.round(c.free_bytes / 1e9)} GB` : '—' }),
+        jsx('td', { title: c.checked_at || 'never probed', 'data-stale': fresh(s, c.checked_at) !== 'fresh', children: fresh(s, c.checked_at) === 'never' ? 'never' : `${ago(c.checked_at)}${fresh(s, c.checked_at) === 'stale' ? ' · stale' : ''}` }),
         jsx('td', { children: `${c.eligible ? 'eligible' : 'out'} · ${c.reason}${c.least_busy ? ' · least busy' : ''}` })
       ] }, c.id))
     ] }) }),
@@ -837,7 +848,7 @@ function WhyPanel({ s, focus, onRecheck, busy }) {
   ] })
 }
 
-const EVENT_LABEL = { route: 'configured', served: 'served', health: 'health', rehearsal: 'rehearsal', maintenance: 'maintenance', drift: 'drift', aux: 'side tasks' }
+const EVENT_LABEL = { route: 'configured', served: 'served', health: 'health', rehearsal: 'rehearsal', maintenance: 'maintenance', drift: 'drift', aux: 'side tasks', refused: 'refused', private: 'private' }
 
 function Recorder({ events }) {
   const items = (events || []).slice().reverse().slice(0, 14)
@@ -851,6 +862,16 @@ function Recorder({ events }) {
       jsx('em', { children: EVENT_LABEL[e.kind] || e.kind }), ' ', e.text,
       jsx('small', { children: `${ago(new Date((e.t || 0) * 1000).toISOString())}${e.reason ? ` · ${e.reason}` : ''}` })
     ] }, `${e.t}-${i}`)) })
+  ] })
+}
+
+function PrivateBanner({ s, run, busy }) {
+  const p = s.private || {}
+  if (!s.private_only || p.in_force) return null
+  return jsxs('div', { className: 'hs-drift', role: 'status', children: [
+    jsxs('div', { children: [jsx('b', { children: 'Private inference is not fully in force. ' }),
+      (p.problems || []).map(x => `${x.what}: ${x.detail}`).join(' · '), '. Local Fleet re-applies what it owns; the rest needs a change in config.yaml.'] }),
+    jsx(Button, { size: 'sm', disabled: busy, onClick: () => run('private', '/private', { on: true }), children: 'Apply again' })
   ] })
 }
 
@@ -882,7 +903,7 @@ function ReadinessMatrix({ s }) {
       const has = true
       const c = (n.caps || {})[m] || {}
       const ctx = c.context ? `${Math.round(c.context / 1024)}k` : '?'
-      const rejected = has && (c.tools === false || (c.context && c.context < (s.min_context || 32768)))
+      const rejected = has && (c.tools === false || (c.context && s.min_context && c.context < s.min_context))
       const warn = has && !rejected && !c.context && (c.source || '').startsWith('verified')
       return jsxs('tr', { 'data-out': !has || rejected, title: c.source ? `${c.source}${c.context_source ? ' · context: ' + c.context_source : ''}` : 'not checked yet', children: [
         jsx('td', { children: j === 0 ? dname(n) : '' }),
@@ -910,7 +931,7 @@ function SavingsPanel({ s }) {
       jsxs('tr', { children: [jsx('td', { children: 'Output' }), jsx('td', { children: n(b.local_out) }), jsx('td', { children: money(s, b.price_out_per_m || 0) }), jsx('td', { children: money(s, b.saved_out || 0) })] }),
       jsxs('tr', { children: [jsx('td', { children: 'of which side tasks' }), jsx('td', { children: n((b.aux_in || 0) + (b.aux_out || 0)) }), jsx('td', { children: '' }), jsx('td', { children: '' })] })
     ] }) }),
-    jsx('p', { children: `Baseline: your cloud model ${((s.fallback_chain || []).slice(-1)[0] || {}).model || ''} at the rates you entered (hermes fleet price). Tokens are what Hermes's own per-call usage reported.` }),
+    jsx('p', { children: `Baseline: ${(b.baseline || {}).model || 'not recorded'} at the rates you entered (${(b.baseline || {}).source || 'hermes fleet price'}). Tokens are what Hermes's own per-call usage reported.` }),
     jsx('p', { children: `Coverage: ${b.calls_local_counted || 0} of ${b.calls_local || 0} local calls reported token counts${b.coverage != null ? ` (${Math.round(b.coverage * 100)}%)` : ''}. Not counted: ${b.excluded || ''}.` }),
     jsx('p', { className: 'hs-caveat', children: b.caveat })
   ] })
@@ -1019,11 +1040,12 @@ function FleetPage({ ctx }) {
         title: s.aux ? `${s.aux.tasks.join(', ')} → ${s.aux.node_name}` : 'Session titles and compression run on the least busy box, with cloud as backup',
         onClick: () => run('aux', '/aux', { on: !s.aux }), children: [jsx('i', {}), 'Side tasks on fleet'] }),
       jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': Boolean(s.private_only), disabled: Boolean(busy),
-        title: 'Only your boxes: cloud fallback is taken off and Local Fleet refuses rather than use cloud. Tools such as web search still use the internet.',
+        title: s.private_only ? ((s.private || {}).in_force ? 'In force: primary, fallback_providers, side tasks and subagents are on your boxes. Tools such as web search still use the internet.' : 'On, but not fully in force: see the banner') : 'Keep Hermes\'s model calls on your boxes: cloud fallback comes off, subagents use the fleet, and with no box up calls fail rather than reach cloud. Tools such as web search still use the internet.',
         onClick: () => run('private', '/private', { on: !s.private_only }), children: [jsx('i', {}), 'Private inference'] }),
       jsx(Button, { size: 'sm', variant: 'outline', onClick: () => setDrawer({ kind: 'doctor' }), children: 'Doctor' }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
+    jsx(PrivateBanner, { s, run, busy: Boolean(busy) }),
     jsx(DriftBanner, { s, run, busy: Boolean(busy) }),
     jsx(FleetMap, { s, onSelect: id => setDrawer({ kind: 'why', node: id }) }),
     jsx('div', { className: 'hs-cards', children: nodes.slice().sort((x, y) => ((y.members || []).length > 0) - ((x.members || []).length > 0)).map(n =>
