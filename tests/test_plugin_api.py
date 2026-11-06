@@ -35,3 +35,19 @@ def test_status_probe_use_mode(client, hermes):  # noqa: F811
     assert m["mode"] == "prefer-cloud" and m["label"] == "cloud"
     assert client.post("/api/plugins/local-fleet/mode", json={"mode": "x"}).status_code == 400
     assert client.post("/api/plugins/local-fleet/use", json={"node": "nope"}).status_code == 404
+
+
+@respx.mock
+def test_operations_routes(client, hermes):  # noqa: F811
+    boxes()
+    base = "/api/plugins/local-fleet"
+    w = client.post(f"{base}/why").json()
+    assert w["decision"]["candidates"] and w["decision"]["target"]["node_name"] == "gx10"
+    gx = next(n for n in w["nodes"] if n["name"] == "gx10")
+    r = client.post(f"{base}/exclude", json={"node": gx["id"], "kind": "rehearsal", "minutes": 5}).json()
+    assert gx["id"] in r["exclusions"] and r["decision"]["target"]["node_name"] == "spark2"
+    assert any(e["kind"] == "rehearsal" for e in r["events"])
+    assert client.post(f"{base}/include", json={"node": gx["id"]}).json()["exclusions"] == {}
+    assert client.post(f"{base}/exclude", json={"node": gx["id"], "kind": "nope"}).status_code == 400
+    d = client.get(f"{base}/doctor").json()
+    assert any(c["id"] == "routing" for c in d["checks"])

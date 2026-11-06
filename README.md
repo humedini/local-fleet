@@ -111,6 +111,19 @@ local-fleet chooses the **primary**. Hermes core owns the **per-turn** fallback 
 
 The gateway and Desktop rebuild the agent when the primary changes, so a new route applies from the **next message**. A classic CLI session that is already open keeps its model until the next session. This is deliberate: Hermes keeps a conversation on one model so its prompt cache stays valid.
 
+## Operating the fleet
+
+The Local Fleet page (and the CLI) is where you run the fleet day to day:
+
+- **Why this box?** Click any box on the map, or *Why?* on its card, for the decision inspector: what was picked, the reason, and every box's verdict with the numbers behind it (load, latency, speed on this model, free memory) or why it was left out (down, wrong model, maintenance, rehearsal, verified unsuitable). `hermes fleet why`.
+- **Flight recorder.** Health changes, routes Local Fleet configured, what Hermes actually **served** (from Hermes's own per-call hooks, so core fallback taking over within a turn shows up), rehearsals, maintenance and drift, in one timeline. `hermes fleet events`.
+- **Rehearse an outage.** *Rehearse outage* on a card (or `hermes fleet rehearse gx10 --minutes 10`) leaves that box out of selection inside Local Fleet only: nothing is stopped on the box. It is labelled as a rehearsal everywhere and ends by itself.
+- **Maintenance.** `hermes fleet maintenance gx10 on` leaves a box out of new selections until you turn it off. Requests already running on it finish; Local Fleet does not drain or stop anything.
+- **Drift.** If something else changes what Local Fleet wrote (you, or another plugin editing `fallback_providers` or the side-task blocks), Local Fleet notices, says so, and does not overwrite it. *Reapply* takes routing back; *Stop managing* leaves the config exactly as it is. `hermes fleet drift [--reapply|--relinquish]`.
+- **Readiness.** Per box and model: tool calling, vision and context size, with where each fact came from (Ollama's `/api/show` and `/api/ps`). A box is left out only on verified evidence: a model Ollama says cannot call tools, or a verified context below `min_context` (32k by default; Hermes's system prompt alone is ~15k tokens). Unknowns are shown as unknown. `hermes fleet readiness`.
+- **Workload on the map.** Each box is labelled with what it is doing: chat, side tasks (titles, compression), subagents, rehearsal or maintenance.
+- **Doctor.** The *Doctor* button lists every check with a one-click fix (probe again, auto-pick, reapply, end a rehearsal) or the exact command to run. `hermes fleet doctor`. It complements `hermes doctor` and `hermes plugins doctor`.
+
 ## Subagents on the fleet
 
 ```bash
@@ -196,6 +209,12 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet keep on\|off\|status` | keep the routed model in memory |
 | `hermes fleet snapshot [--probe]` | the fleet's state as JSON, for dashboards and status screens (read-only) |
 | `hermes fleet privacy on\|off` | hide box addresses in the Desktop and terminal (screen recordings) |
+| `hermes fleet why` | the decision inspector: every box's verdict and score |
+| `hermes fleet events [-n N]` | the flight recorder |
+| `hermes fleet rehearse <box> [--minutes M] [--stop]` | simulated outage inside Local Fleet (nothing stopped) |
+| `hermes fleet maintenance <box> on\|off` | leave a box out of new selections |
+| `hermes fleet drift [--reapply\|--relinquish]` | what changed outside Local Fleet, and what to do about it |
+| `hermes fleet readiness` | tools, vision and context per box and model, with evidence |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |
 | `hermes fleet price <in> <out> [--currency CODE]` | cloud price per million tokens, in an ISO 4217 currency (`£ € $ ¥` accepted) |
 | `hermes fleet endpoint` | the primary Hermes is using |
@@ -234,8 +253,8 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 
 ## Disclosures
 
-- **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
-- **Files**: reads and writes `fleet.json`, `state.json` and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory; writes the config keys listed above, plus `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` blocks (`aux on/off`, restored on off).
+- **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), Ollama's `/api/show` for each of your models on each box at most hourly (readiness), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
+- **Files**: reads and writes `fleet.json`, `state.json`, `events.jsonl` (the flight recorder, last 400 events) and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory; writes the config keys listed above, plus `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` blocks (`aux on/off`, restored on off).
 - **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`), with a speed bench when one is due. `hermes fleet watch` runs only when you start it. Observer hooks (`post_api_request`, `api_request_error`, `post_auxiliary_call`) append one line per call.
 - **Credentials**: none stored. Optional per-box keys are read by env var name through Hermes's secret resolver.
 - **Plain HTTP**: Ollama and vLLM usually serve plain HTTP. `doctor` warns if a box's URL is plain HTTP to a public address; keep boxes on your LAN, a tailnet or behind TLS.
@@ -254,7 +273,6 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 
 - Continuous switching needs `hermes fleet watch` running (see *Keeping it current*).
 - If loading a model on the new box fails during a switch, the switch still happens and the toast says why; it does not yet try the next box instead.
-- `hermes fleet doctor` checks the main model only, not the fallback tiers, and does not check that the plugin is enabled.
 - Load for Ollama boxes counts models in memory; it cannot see other GPU work (training jobs). Speeds are snapshots.
 - Clusters are shown and routed, not created; the interconnect label is what you declare.
 - On Windows the file lock only covers threads of one process.

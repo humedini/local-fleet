@@ -87,7 +87,7 @@ def test_flight_recorder_separates_configured_and_served(hermes):  # noqa: F811
     tl = events.timeline()
     kinds = [e["kind"] for e in tl]
     assert "route" in kinds and kinds.count("served") == 2
-    assert tl[-1]["text"].startswith("served by cloud · openrouter")
+    assert tl[-1]["kind"] == "served" and tl[-1]["text"].startswith("cloud · openrouter")
     assert json.dumps(tl)
 
 

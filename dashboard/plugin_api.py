@@ -108,6 +108,48 @@ async def rename(body: dict):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/why")
+async def why():
+    """Probe and decide without changing anything: the decision inspector's data."""
+    return await asyncio.to_thread(lambda: _view(engine.apply_policy(dry_run=True)))
+
+
+@router.post("/exclude")
+async def exclude(body: dict):
+    """Rehearse an outage (kind "rehearsal", minutes) or put a box in maintenance (kind "maintenance")."""
+    kind = body.get("kind")
+    if kind not in ("rehearsal", "maintenance"):
+        raise HTTPException(status_code=400, detail="kind must be rehearsal or maintenance")
+    try:
+        return await asyncio.to_thread(lambda: _view(engine.exclude(str(body.get("node") or ""), kind, float(body.get("minutes") or 10))))
+    except FleetError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/include")
+async def include(body: dict):
+    try:
+        return await asyncio.to_thread(lambda: _view(engine.include(str(body.get("node") or ""))))
+    except FleetError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/reapply")
+async def reapply():
+    return await asyncio.to_thread(lambda: _view(engine.reapply()))
+
+
+@router.post("/relinquish")
+async def relinquish():
+    return await asyncio.to_thread(lambda: {**_view(), "decision": {"reason": engine.relinquish()}})
+
+
+@router.get("/doctor")
+async def doctor_checks():
+    from local_fleet_desktop_api import doctor
+    return await asyncio.to_thread(lambda: {"checks": doctor.checks()})
+
+
 @router.post("/use")
 async def use(body: dict):
     node = str(body.get("node") or "")

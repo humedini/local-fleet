@@ -20,8 +20,9 @@ import plugin from './plugin.js'
 import { createRoot } from 'react-dom/client'
 import { createElement as h } from 'react'
 const status = await (await fetch('./demo-status.json')).json()
+const doctor = await (await fetch('./demo-doctor.json')).json()
 const regs = []
-plugin.register({ register: r => regs.push(r), onDispose() {}, rest: async () => status })
+plugin.register({ register: r => regs.push(r), onDispose() {}, storage: { get: (k, d) => d, set() {} }, rest: async (p) => (p.startsWith('/doctor') ? doctor : status) })
 const view = new URLSearchParams(location.search).get('view') || 'page'
 const root = createRoot(document.getElementById('root'))
 if (view === 'chip') {

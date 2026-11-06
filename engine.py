@@ -268,8 +268,8 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         state["last_decision"] = decision
         if decision["applied"]:
             t = decision["target"]
-            events.record("route", ("configured → " + (f"{t.get('node_name')} · {t.get('model')}" if t["kind"] == "local"
-                                     else f"cloud · {t.get('provider')}/{t.get('model')}")), reason=decision["reason"],
+            events.record("route", (f"{t.get('node_name')} · {t.get('model')}" if t["kind"] == "local"
+                                    else f"cloud · {t.get('provider')}/{t.get('model')}"), reason=decision["reason"],
                           via=t.get("via"))
         if decision.get("aux") and "→" in decision["aux"]:
             events.record("aux", decision["aux"])

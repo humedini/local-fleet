@@ -62,6 +62,54 @@ const CSS = `
 .hs-link{all:unset;cursor:pointer;color:var(--ui-text-tertiary)}
 .hs-link:hover{color:${SPARK_GREEN}}
 .hs-error{padding:0 8px 6px;color:var(--ui-text-secondary)}
+.hs-pick{cursor:pointer}
+.hs-pick:hover polygon{filter:brightness(1.25)}
+.hs-roles{font-size:10.5px;font-weight:600}
+.hs-roles tspan[data-k=chat]{fill:${SPARK_GREEN}}
+.hs-roles tspan[data-k=aux]{fill:#c7a3ff}
+.hs-roles tspan[data-k=sub]{fill:#6ee7ff}
+.hs-roles tspan[data-k=ex]{fill:var(--ui-orange,#df6500)}
+.hs-badge[data-kind=ex]{color:var(--ui-orange,#df6500);border-color:var(--ui-orange,#df6500)}
+.hs-card-actions{display:flex;gap:14px;margin-top:8px;font-size:11px}
+.hs-card-actions .hs-link:disabled{opacity:.5;cursor:default}
+.hs-stat-btn{all:unset;cursor:pointer;border:1px solid var(--ui-stroke-tertiary);border-radius:8px;padding:10px 14px;min-width:0}
+.hs-stat-btn:hover{border-color:${SPARK_GREEN}}
+.hs-stat-btn b{display:block;font-size:20px;font-weight:600;line-height:26px}
+.hs-stat-btn span{font-size:12px;color:var(--ui-text-tertiary)}
+.hs-drift{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;border:1px solid var(--ui-orange,#df6500);border-radius:8px;font-size:12px;background:color-mix(in srgb,var(--ui-orange,#df6500) 8%,transparent)}
+.hs-drift>div{flex:1;min-width:240px}
+.hs-drawer-wrap{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.35);display:flex;justify-content:flex-end}
+.hs-drawer{width:min(620px,92vw);height:100%;overflow-y:auto;background:var(--ui-bg-elevated,#1b1b20);border-left:1px solid var(--ui-stroke-secondary);box-shadow:-20px 0 50px rgba(0,0,0,.4)}
+.hs-drawer-head{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ui-stroke-tertiary);background:inherit;font-size:15px}
+.hs-drawer-body{padding:14px 18px 24px;font-size:12.5px;display:flex;flex-direction:column;gap:12px}
+.hs-why-route{font-size:18px;font-weight:600;color:${SPARK_GREEN}}
+.hs-why-head{display:flex;flex-direction:column;gap:3px}
+.hs-why-head small{color:var(--ui-text-tertiary)}
+.hs-why-table{width:100%;border-collapse:collapse;font-size:12px}
+.hs-why-table th{text-align:left;font-weight:500;color:var(--ui-text-tertiary);padding:4px 6px;border-bottom:1px solid var(--ui-stroke-tertiary)}
+.hs-why-table td{padding:6px;border-bottom:1px solid var(--ui-stroke-tertiary);vertical-align:middle}
+.hs-why-table tr[data-chosen=true] td{color:${SPARK_GREEN};font-weight:600}
+.hs-why-table tr[data-out=true] td{color:var(--ui-text-tertiary)}
+.hs-why-table tr[data-focus=true] td{background:var(--ui-row-active-background)}
+.hs-ready{margin-top:4px}
+.hs-why-table .hs-meter{display:inline-block;width:56px;vertical-align:middle}
+.hs-rec-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--ui-text-tertiary);margin-bottom:8px}
+.hs-rec-legend span::before{content:'';display:inline-block;width:7px;height:7px;border-radius:9px;margin-right:5px;background:var(--ui-text-quaternary)}
+.hs-rec-legend span[data-k=route]::before,.hs-ev[data-k=route]::before{background:${SPARK_GREEN}}
+.hs-rec-legend span[data-k=served]::before,.hs-ev[data-k=served]::before{background:#6ee7ff}
+.hs-rec-legend span[data-k=health]::before,.hs-ev[data-k=health]::before{background:var(--ui-red,#e5484d)}
+.hs-rec-legend span[data-k=rehearsal]::before,.hs-ev[data-k=rehearsal]::before,.hs-ev[data-k=maintenance]::before,.hs-ev[data-k=drift]::before{background:var(--ui-orange,#df6500)}
+.hs-ev em{font-style:normal;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ui-text-tertiary)}
+.hs-caveat{padding:8px 10px;border-left:3px solid var(--ui-orange,#df6500);color:var(--ui-text-secondary)}
+.hs-check{display:grid;grid-template-columns:18px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--ui-stroke-tertiary)}
+.hs-check-icon{font-weight:700;text-align:center}
+.hs-check[data-level=ok] .hs-check-icon{color:${SPARK_GREEN}}
+.hs-check[data-level=warn] .hs-check-icon{color:var(--ui-orange,#df6500)}
+.hs-check[data-level=error] .hs-check-icon{color:var(--ui-red,#e5484d)}
+.hs-check-body{display:flex;flex-direction:column;gap:4px}
+.hs-check-body div{color:var(--ui-text-secondary)}
+.hs-check-body code{font-size:11px;padding:4px 6px;border-radius:4px;background:var(--ui-bg-tertiary,#141418);word-break:break-all}
+.hs-check-actions{display:flex;gap:8px}
 .hs-error code{display:block;margin-top:4px;font-size:11px;color:var(--ui-text-tertiary);word-break:break-word}
 .hs-page{height:100%;overflow-y:auto;padding:20px 24px 32px;color:var(--ui-text-primary)}
 .hs-page-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:14px}
@@ -525,11 +573,14 @@ function clusterTotals(c, byId) {
 function Labels({ x, y, n, s, active, extra }) {
   const marks = marksFor(n)
   const lines = [boxLine(n, s), ...(extra || []), residentLine(n)].filter(Boolean)
+  const rs = roles(s, n)
   return jsxs('g', { children: [
     jsx('circle', { cx: x - 8, cy: y - 22, r: 3.5, fill: active ? SPARK_GREEN : TONE_FILL[skipped(n, s) ? 'off' : nodeTone(n)] }),
     ...marks.map(([k, t], j) => jsx(Mark, { kind: k, title: t, x: x + j * 19, y: y - 31, size: 16 }, k)),
     jsx('text', { x: x + 2 + marks.length * 19, y: y - 18, style: { fontWeight: 600 }, children: dname(n) + (active ? '  ← routed' : '') }),
     ...lines.map((t, j) => jsx('text', { className: 't2', x, y: y - 3 + j * 14, children: t }, j)),
+    rs.length > 0 && jsx('text', { className: 'hs-roles', x, y: y - 3 + (lines.length + (liveCalls(s, n) > 0 ? 1 : 0)) * 14,
+      children: rs.map(([k, label], i) => jsx('tspan', { 'data-k': k, children: (i ? '  ' : '') + label }, k)) }),
     liveCalls(s, n) > 0 && jsx('text', { className: 't2', x, y: y - 3 + lines.length * 14, style: { fill: '#6ee7ff' },
       children: `● live · ${liveCalls(s, n)} call${liveCalls(s, n) === 1 ? '' : 's'}${recentDelegation(s, n) ? ' · subagents' : ''}` })
   ] })
@@ -563,7 +614,7 @@ function ClusterRack({ c, s, x, y, byId, active, live, reduced }) {
   ] })
 }
 
-function FleetMap({ s }) {
+function FleetMap({ s, onSelect }) {
   const nodes = s.nodes || []
   const byId = Object.fromEntries(nodes.map(n => [n.id, n]))
   const items = mapItems(nodes)
@@ -598,10 +649,10 @@ function FleetMap({ s }) {
       const { x, y } = pos[i]
       const active = activeOf(n)
       if (isCluster(n)) {
-        return jsx(ClusterRack, { c: n, s, x, y, byId, active, live: liveCalls(s, n) > 0, reduced }, n.id)
+        return jsx('g', { className: 'hs-pick', onClick: () => onSelect && onSelect(n.id), children: jsx(ClusterRack, { c: n, s, x, y, byId, active, live: liveCalls(s, n) > 0, reduced }) }, n.id)
       }
-      const tone = skipped(n, s) ? 'off' : nodeTone(n)
-      return jsxs('g', { children: [
+      const tone = skipped(n, s) || (s.exclusions || {})[n.id] ? 'off' : nodeTone(n)
+      return jsxs('g', { className: 'hs-pick', onClick: () => onSelect && onSelect(n.id), children: [
         jsx(IsoServer, { x, y, tone, active, load: (n.last_health || {}).load_proxy }),
         jsx(Labels, { x: x + 70, y, n, s, active })
       ] }, n.id)
@@ -684,7 +735,20 @@ function EditableName({ ctx, n }) {
   ] })
 }
 
-function NodeCard({ n, s, ctx }) {
+function CardActions({ n, s, run, busy, onWhy }) {
+  const ex = (s.exclusions || {})[n.id]
+  return jsxs('div', { className: 'hs-card-actions', children: [
+    jsx('button', { type: 'button', className: 'hs-link', onClick: onWhy, children: 'Why?' }),
+    ex ? jsx('button', { type: 'button', className: 'hs-link', disabled: busy, onClick: () => run('include', '/include', { node: n.id }),
+      children: ex.kind === 'maintenance' ? 'End maintenance' : 'End rehearsal' })
+      : [jsx('button', { type: 'button', className: 'hs-link', disabled: busy, title: 'Pretend this box is down for 10 minutes, inside Local Fleet only: nothing is stopped on the box',
+          onClick: () => run('rehearse', '/exclude', { node: n.id, kind: 'rehearsal', minutes: 10 }), children: 'Rehearse outage' }, 'r'),
+        jsx('button', { type: 'button', className: 'hs-link', disabled: busy, title: 'Leave this box out of new selections; requests already running there finish',
+          onClick: () => run('maintenance', '/exclude', { node: n.id, kind: 'maintenance' }), children: 'Maintenance' }, 'm')]
+  ] })
+}
+
+function NodeCard({ n, s, ctx, run, busy, onWhy }) {
   const h = n.last_health || {}
   const cluster = (n.members || []).length > 0
   const byId = Object.fromEntries((s.nodes || []).map(x => [x.id, x]))
@@ -699,6 +763,8 @@ function NodeCard({ n, s, ctx }) {
       ctx ? jsx(EditableName, { ctx, n }) : jsx('span', { children: dname(n) }),
       cluster && jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, children: `cluster · ${n.members.length} boxes${n.link ? ' · ' + n.link : ''}` }),
       ...parents.map(c => jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, title: 'Shares its memory with this cluster', children: `in ${dname(c)}` }, c.id)),
+      (s.exclusions || {})[n.id] && jsx('em', { className: 'hs-badge', 'data-kind': 'ex', style: { fontStyle: 'normal' },
+        children: (s.exclusions[n.id].kind === 'maintenance' ? 'maintenance' : 'rehearsal') }),
       jsx('span', { className: 'hs-lat', children: h.latency_ms != null ? `${h.latency_ms} ms` : '' })
     ] }),
     jsxs('div', { className: 'hs-card-perf', children: [
@@ -717,24 +783,185 @@ function NodeCard({ n, s, ctx }) {
           jsxs('div', { children: [jsx('div', { className: 'hs-mem-who', children: dname(m) }), jsx(MemoryPanel, { n: m, s })] }, m.id)) })
       : jsx(MemoryPanel, { n, s }),
     jsx(Sparkline, { points: (s.series || {})[n.id] }),
+    run && jsx(CardActions, { n, s, run, busy, onWhy }),
     jsx('div', { className: 'hs-models', children: models.slice(0, 8).map(m => jsx('span', {
       'data-want': m === want, 'data-fallback': (s.model_tiers || []).slice(1).includes(m),
       title: m === want ? `${m} (your main model)` : (s.model_tiers || []).includes(m) ? `${m} (fallback model)` : m, children: m }, m)) })
   ] })
 }
 
-function Timeline({ history }) {
-  const items = (history || []).slice().reverse().slice(0, 12)
-  if (!items.length) return jsx('div', { className: 'hs-page-hint', children: 'No routing changes yet. Auto-pick box, a mode change or a failover will appear here.' })
-  return jsx('div', { className: 'hs-timeline', children: items.map((e, i) => jsxs('div', { className: 'hs-ev', 'data-kind': e.kind, 'data-via': e.via || '', children: [
-    e.kind === 'local' ? `→ ${e.node} · ${e.model}` : `→ cloud · ${e.model}`,
-    jsx('small', { children: `${ago(e.at)} · ${e.reason}` })
-  ] }, `${e.at}-${i}`)) })
+// ---------------------------------------------------------------------------
+// Operations: decision inspector, flight recorder, rehearsal / maintenance, drift, readiness,
+// savings audit and the doctor drawer. All read the same /status snapshot; actions call the
+// plugin's own routes and never touch anything outside Hermes's config and Local Fleet's files.
+
+function Drawer({ title, onClose, children }) {
+  return jsxs('div', { className: 'hs-drawer-wrap', onClick: e => { if (e.target === e.currentTarget) onClose() }, children: [
+    jsxs('aside', { className: 'hs-drawer', role: 'dialog', 'aria-label': title, children: [
+      jsxs('div', { className: 'hs-drawer-head', children: [jsx('b', { children: title }),
+        jsx('button', { type: 'button', className: 'hs-link', onClick: onClose, 'aria-label': 'Close', children: 'Close' })] }),
+      jsx('div', { className: 'hs-drawer-body', children })
+    ] })
+  ] })
+}
+
+function WhyPanel({ s, focus, onRecheck, busy }) {
+  const d = s.decision || s.last_decision || {}
+  const cands = d.candidates || []
+  if (!cands.length) {
+    return jsxs('div', { children: [jsx('p', { className: 'hs-page-hint', children: 'No decision recorded yet.' }),
+      jsx(Button, { size: 'sm', onClick: onRecheck, disabled: busy, children: busy ? 'Checking…' : 'Check now' })] })
+  }
+  const t = d.target || {}
+  return jsxs('div', { className: 'hs-why', children: [
+    jsxs('div', { className: 'hs-why-head', children: [
+      jsx('div', { className: 'hs-why-route', children: t.kind === 'cloud' ? `Cloud · ${t.provider}/${t.model}` : `${t.node_name || '—'} · ${t.model || ''}` }),
+      jsx('div', { children: d.reason }),
+      jsx('small', { children: `mode ${d.mode}${d.pinned ? ' · pinned' : ''} · model ${d.tier_model || '(each box its own)'}${d.tier ? ` · fallback tier ${d.tier}` : ''} · decided ${ago(d.at)}` })
+    ] }),
+    jsx('table', { className: 'hs-why-table', children: jsxs('tbody', { children: [
+      jsxs('tr', { children: ['', 'Box', 'Load', 'Latency', 'tok/s', 'Free', 'Verdict'].map(h => jsx('th', { children: h }, h)) }),
+      ...cands.map(c => jsxs('tr', { 'data-chosen': c.chosen, 'data-out': !c.eligible, 'data-focus': focus === c.id, children: [
+        jsx('td', { children: c.chosen ? '→' : '' }),
+        jsx('td', { children: c.title || c.name }),
+        jsx('td', { children: c.load == null ? '—' : jsx('span', { className: 'hs-meter', 'data-busy': c.load > 0.75, children: jsx('i', { style: { width: `${Math.max(3, c.load * 100)}%` } }) }) }),
+        jsx('td', { children: c.latency_ms == null ? '—' : `${c.latency_ms} ms` }),
+        jsx('td', { children: c.tps || '—' }),
+        jsx('td', { children: c.free_bytes ? `${Math.round(c.free_bytes / 1e9)} GB` : '—' }),
+        jsx('td', { children: `${c.eligible ? 'eligible' : 'out'} · ${c.reason}${c.least_busy ? ' · least busy' : ''}` })
+      ] }, c.id))
+    ] }) }),
+    jsx('p', { className: 'hs-page-hint', children: 'Eligible boxes are ranked by load, then your preferred labels, then speed on this model, then free memory, then latency. A healthy box Hermes is already on is kept unless another is clearly less busy.' }),
+    jsx(Button, { size: 'sm', variant: 'outline', onClick: onRecheck, disabled: busy, children: busy ? 'Checking…' : 'Check again (probes, changes nothing)' })
+  ] })
+}
+
+const EVENT_LABEL = { route: 'configured', served: 'served', health: 'health', rehearsal: 'rehearsal', maintenance: 'maintenance', drift: 'drift', aux: 'side tasks' }
+
+function Recorder({ events }) {
+  const items = (events || []).slice().reverse().slice(0, 14)
+  if (!items.length) return jsx('div', { className: 'hs-page-hint', children: 'Nothing recorded yet. Routing changes, health changes, rehearsals and what Hermes actually served will appear here.' })
+  return jsxs('div', { children: [
+    jsxs('div', { className: 'hs-rec-legend', children: [
+      jsx('span', { 'data-k': 'route', children: 'configured: what Local Fleet set' }),
+      jsx('span', { 'data-k': 'served', children: 'served: what actually answered' }),
+      jsx('span', { 'data-k': 'health', children: 'health' }), jsx('span', { 'data-k': 'rehearsal', children: 'rehearsal / maintenance' })] }),
+    jsx('div', { className: 'hs-timeline', children: items.map((e, i) => jsxs('div', { className: 'hs-ev', 'data-k': e.kind, children: [
+      jsx('em', { children: EVENT_LABEL[e.kind] || e.kind }), ' ', e.text,
+      jsx('small', { children: `${ago(new Date((e.t || 0) * 1000).toISOString())}${e.reason ? ` · ${e.reason}` : ''}` })
+    ] }, `${e.t}-${i}`)) })
+  ] })
+}
+
+function DriftBanner({ s, run, busy }) {
+  const items = s.drift || []
+  if (!items.length) return null
+  return jsxs('div', { className: 'hs-drift', role: 'status', children: [
+    jsxs('div', { children: [jsx('b', { children: 'Changed outside Local Fleet. ' }),
+      items.map(d => d.detail).join(' · '), '. Local Fleet will not overwrite it on its own.'] }),
+    jsx(Button, { size: 'sm', disabled: busy, onClick: () => run('reapply', '/reapply'), children: 'Reapply' }),
+    jsx(Button, { size: 'sm', variant: 'outline', disabled: busy, onClick: () => run('relinquish', '/relinquish'), children: 'Stop managing' })
+  ] })
+}
+
+function ReadinessMatrix({ s }) {
+  const tiers = s.model_tiers || []
+  const rows = (s.nodes || []).filter(n => !(n.members || []).length)
+  if (!tiers.length) return jsx('div', { className: 'hs-page-hint', children: 'Set a local model (hermes fleet model) to check which boxes can run Hermes on it.' })
+  const cell = v => (v === true ? '✓' : v === false ? '✗' : '?')
+  return jsx('table', { className: 'hs-why-table hs-ready', children: jsxs('tbody', { children: [
+    jsxs('tr', { children: ['Box', 'Model', 'Tools', 'Vision', 'Context', 'Verdict'].map(h => jsx('th', { children: h }, h)) }),
+    ...rows.flatMap(n => {
+      const installed = tiers.filter(m => ((n.last_health || {}).models || []).includes(m))
+      if (!installed.length) {
+        return [jsxs('tr', { 'data-out': true, children: [jsx('td', { children: dname(n) }), jsx('td', { colSpan: 4, children: 'none of your models installed' }), jsx('td', { children: 'not a candidate' })] }, `${n.id}-none`)]
+      }
+      return installed.map((m, j) => {
+      const i = tiers.indexOf(m)
+      const has = true
+      const c = (n.caps || {})[m] || {}
+      const ctx = c.context ? `${Math.round(c.context / 1024)}k` : '?'
+      const rejected = has && (c.tools === false || (c.context && c.context < (s.min_context || 32768)))
+      const warn = has && !rejected && !c.context && (c.source || '').startsWith('verified')
+      return jsxs('tr', { 'data-out': !has || rejected, title: c.source ? `${c.source}${c.context_source ? ' · context: ' + c.context_source : ''}` : 'not checked yet', children: [
+        jsx('td', { children: j === 0 ? dname(n) : '' }),
+        jsx('td', { children: `${m}${i ? ' (fallback)' : ''}` }),
+        jsx('td', { children: has ? cell(c.tools) : '' }),
+        jsx('td', { children: has ? cell(c.vision) : '' }),
+        jsx('td', { children: has ? `${ctx}${c.context_source ? ` · ${c.context_source.split(' (')[0]}` : ''}` : '' }),
+        jsx('td', { children: !has ? 'not installed' : rejected ? 'rejected' : warn ? 'context not set: may truncate Hermes' : c.source ? 'ok' : 'not checked' })
+      ] }, `${n.id}-${m}`)
+      })
+    })
+  ] }) })
+}
+
+function SavingsPanel({ s }) {
+  const t = s.traffic || {}
+  const b = t.breakdown || {}
+  if (t.saved == null) return jsx('p', { className: 'hs-page-hint', children: 'Set your cloud model\'s price first: hermes fleet price <input> <output> --currency GBP' })
+  const n = v => (v || 0).toLocaleString()
+  return jsxs('div', { className: 'hs-savings', children: [
+    jsxs('div', { className: 'hs-why-route', children: [money(s, t.saved), ' avoided this week'] }),
+    jsx('table', { className: 'hs-why-table', children: jsxs('tbody', { children: [
+      jsxs('tr', { children: [jsx('th', { children: '' }), jsx('th', { children: 'Tokens run locally' }), jsx('th', { children: 'Rate per million' }), jsx('th', { children: 'Value' })] }),
+      jsxs('tr', { children: [jsx('td', { children: 'Input' }), jsx('td', { children: n(b.local_in) }), jsx('td', { children: money(s, b.price_in_per_m || 0) }), jsx('td', { children: money(s, b.saved_in || 0) })] }),
+      jsxs('tr', { children: [jsx('td', { children: 'Output' }), jsx('td', { children: n(b.local_out) }), jsx('td', { children: money(s, b.price_out_per_m || 0) }), jsx('td', { children: money(s, b.saved_out || 0) })] }),
+      jsxs('tr', { children: [jsx('td', { children: 'of which side tasks' }), jsx('td', { children: n((b.aux_in || 0) + (b.aux_out || 0)) }), jsx('td', { children: '' }), jsx('td', { children: '' })] })
+    ] }) }),
+    jsx('p', { children: `Baseline: your cloud model ${((s.fallback_chain || []).slice(-1)[0] || {}).model || ''} at the rates you entered (hermes fleet price). Tokens are what Hermes's own per-call usage reported.` }),
+    jsx('p', { children: `Coverage: ${b.calls_local_counted || 0} of ${b.calls_local || 0} local calls reported token counts${b.coverage != null ? ` (${Math.round(b.coverage * 100)}%)` : ''}. Not counted: ${b.excluded || ''}.` }),
+    jsx('p', { className: 'hs-caveat', children: b.caveat })
+  ] })
+}
+
+const LEVEL_ICON = { ok: '✓', info: '·', warn: '!', error: '✗' }
+
+function DoctorPanel({ ctx, run, busy }) {
+  const dq = useQuery({ queryKey: [ID, 'doctor'], queryFn: () => ctx.rest('/doctor', { timeoutMs: 60000 }), staleTime: 0 })
+  const act = async (action) => {
+    if (action === 'probe') await run('probe', '/probe')
+    else if (action === 'use') await run('use', '/use', { node: 'best' })
+    else if (action === 'reapply') await run('reapply', '/reapply')
+    else if (action === 'relinquish') await run('relinquish', '/relinquish')
+    else if (action.startsWith('include:')) await run('include', '/include', { node: action.slice(8) })
+    dq.refetch()
+  }
+  const checks = (dq.data || {}).checks || []
+  if (dq.isLoading) return jsx('p', { className: 'hs-page-hint', children: 'Checking every box…' })
+  return jsxs('div', { className: 'hs-doctor', children: [
+    ...checks.map(c => jsxs('div', { className: 'hs-check', 'data-level': c.level, children: [
+      jsx('span', { className: 'hs-check-icon', children: LEVEL_ICON[c.level] }),
+      jsxs('div', { className: 'hs-check-body', children: [jsx('b', { children: c.title }), c.detail && jsx('div', { children: c.detail }),
+        c.fix && c.fix.command && jsx('code', { children: c.fix.command }),
+        c.fix && c.fix.action && jsxs('div', { className: 'hs-check-actions', children: [
+          jsx(Button, { size: 'sm', disabled: busy, onClick: () => act(c.fix.action), children: c.fix.label }),
+          c.fix.alt && jsx(Button, { size: 'sm', variant: 'outline', disabled: busy, onClick: () => act(c.fix.alt.action), children: c.fix.alt.label })] })] })
+    ] }, c.id)),
+    jsx('p', { className: 'hs-page-hint', children: 'Complements hermes doctor (Hermes itself) and hermes plugins doctor (packaging).' }),
+    jsx(Button, { size: 'sm', variant: 'outline', onClick: () => dq.refetch(), children: 'Run again' })
+  ] })
+}
+
+function roles(s, n) {
+  const a = s.applied || {}
+  const out = []
+  if (a.kind === 'local' && (a.node_id === n.id || (n.members || []).includes(a.node_id))) out.push(['chat', 'chat'])
+  if (s.aux && s.aux.node_id === n.id) out.push(['aux', s.aux.tasks.map(t => t === 'title_generation' ? 'titles' : t).join(' · ')])
+  if (recentDelegation(s, n)) out.push(['sub', 'subagents'])
+  const ex = (s.exclusions || {})[n.id]
+  if (ex) out.push(['ex', ex.kind === 'maintenance' ? 'maintenance' : 'rehearsal'])
+  return out
 }
 
 function FleetPage({ ctx }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState('')
+  // {kind: 'why' | 'doctor' | 'savings', node?}; ?drawer=why|doctor|savings opens one, for previews
+  const [drawer, setDrawer] = useState(() => {
+    const k = new URLSearchParams(window.location.search).get('drawer')
+    return k ? { kind: k } : null
+  })
   const q = useQuery({ queryKey: KEY, queryFn: () => ctx.rest('/status'), refetchInterval: 10000, retry: 1, staleTime: 3000 })
   const run = async (label, path, body) => {
     setBusy(label)
@@ -768,7 +995,8 @@ function FleetPage({ ctx }) {
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { style: a.kind === 'local' ? { color: SPARK_GREEN } : undefined, children: a.kind === 'local' ? a.node_name : a.kind === 'cloud' ? 'cloud' : '—' }), jsx('span', { children: 'Routed to' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: (s.traffic || {}).local_share != null ? `${Math.round(s.traffic.local_share * 100)}%` : '—' }), jsx('span', { children: 'Tokens run locally (7 d)' })] }),
-      jsxs('div', { className: 'hs-stat', title: (s.traffic || {}).saved == null ? 'Set a cloud price: hermes fleet price <in> <out> --currency GBP' : 'Local tokens at your cloud price', children: [
+      jsxs('button', { type: 'button', className: 'hs-stat hs-stat-btn', onClick: () => setDrawer({ kind: 'savings' }),
+        title: (s.traffic || {}).saved == null ? 'Set a cloud price: hermes fleet price <in> <out> --currency GBP' : 'How this is worked out', children: [
         jsx('b', { style: (s.traffic || {}).saved ? { color: SPARK_GREEN } : undefined, children: (s.traffic || {}).saved != null ? money(s, s.traffic.saved) : '—' }),
         jsx('span', { children: 'Cloud spend avoided (7 d)' })] })
     ] }),
@@ -789,12 +1017,23 @@ function FleetPage({ ctx }) {
       jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': Boolean(s.aux), disabled: Boolean(busy),
         title: s.aux ? `${s.aux.tasks.join(', ')} → ${s.aux.node_name}` : 'Session titles and compression run on the least busy box, with cloud as backup',
         onClick: () => run('aux', '/aux', { on: !s.aux }), children: [jsx('i', {}), 'Side tasks on fleet'] }),
+      jsx(Button, { size: 'sm', variant: 'outline', onClick: () => setDrawer({ kind: 'doctor' }), children: 'Doctor' }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
-    jsx(FleetMap, { s }),
-    jsx('div', { className: 'hs-cards', children: nodes.slice().sort((x, y) => ((y.members || []).length > 0) - ((x.members || []).length > 0)).map(n => jsx(NodeCard, { n, s, ctx }, n.id)) }),
-    jsx('div', { className: 'hs-section', children: 'Routing history' }),
-    jsx(Timeline, { history: s.history })
+    jsx(DriftBanner, { s, run, busy: Boolean(busy) }),
+    jsx(FleetMap, { s, onSelect: id => setDrawer({ kind: 'why', node: id }) }),
+    jsx('div', { className: 'hs-cards', children: nodes.slice().sort((x, y) => ((y.members || []).length > 0) - ((x.members || []).length > 0)).map(n =>
+      jsx(NodeCard, { n, s, ctx, run, busy: Boolean(busy), onWhy: () => setDrawer({ kind: 'why', node: n.id }) }, n.id)) }),
+    jsx('div', { className: 'hs-section', children: 'Readiness: can each box run Hermes on your models?' }),
+    jsx(ReadinessMatrix, { s }),
+    jsx('div', { className: 'hs-section', children: 'Flight recorder' }),
+    jsx(Recorder, { events: s.events }),
+    drawer && drawer.kind === 'why' && jsx(Drawer, { title: 'Why this box?', onClose: () => setDrawer(null),
+      children: jsx(WhyPanel, { s, focus: drawer.node, busy: busy === 'why', onRecheck: () => run('why', '/why') }) }),
+    drawer && drawer.kind === 'doctor' && jsx(Drawer, { title: 'Fleet doctor', onClose: () => setDrawer(null),
+      children: jsx(DoctorPanel, { ctx, run, busy: Boolean(busy) }) }),
+    drawer && drawer.kind === 'savings' && jsx(Drawer, { title: 'Cloud spend avoided: the working', onClose: () => setDrawer(null),
+      children: jsx(SavingsPanel, { s }) })
   ] })
 }
 

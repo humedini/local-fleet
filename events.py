@@ -57,7 +57,7 @@ def served_changes(traffic_lines: list[dict], names: dict[str, str]) -> list[dic
         who = names.get(ln.get("n"), ln.get("n")) if ln.get("n") else f"cloud · {ln.get('p') or '?'}"
         if who != last:
             ok = "" if ln.get("ok", 1) else " (call failed)"
-            out.append({"t": ln.get("t", 0), "kind": "served", "text": f"served by {who} · {ln.get('m') or ''}{ok}".strip(), "box": who})
+            out.append({"t": ln.get("t", 0), "kind": "served", "text": f"{who} · {ln.get('m') or ''}{ok}".strip(), "box": who})
             last = who
     return out
 

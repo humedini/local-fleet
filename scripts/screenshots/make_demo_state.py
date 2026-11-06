@@ -108,15 +108,65 @@ state = {
     "aux": {"tasks": ["title_generation", "compression"], "node_id": "d00004", "node_name": "strix", "model": FALLBACK},
     "delegations": [{"at": iso(0.5), "label": "studio"}],
 }
+# Operations data: readiness evidence, the decision inspector, a rehearsal, the flight recorder,
+# the savings breakdown and doctor checks (all invented).
+VER = "verified: Ollama /api/show"
+for n in nodes:
+    caps = {}
+    for m in n["last_health"]["models"]:
+        caps[m] = {"tools": True, "vision": m.startswith("gemma"), "context": 65536 if m != FALLBACK else None,
+                   "context_source": "model file num_ctx" if m != FALLBACK else "server default (not set in the model)",
+                   "source": VER if n["kind"] == "ollama" else "vllm does not report capabilities", "checked_at": iso(20)}
+    n["caps"] = caps
+state["model_tiers"] = [BIG, MAIN, FALLBACK]
+state["min_context"] = 32768
+state["exclusions"] = {"d00004": {"kind": "rehearsal", "until": (NOW + timedelta(minutes=8)).isoformat(), "since": iso(2), "label": "strix"}}
+state["last_decision"].update({"mode": "auto", "tier": 0, "tier_model": BIG, "pinned": False, "at": iso(1),
+    "target": {"kind": "local", "node_id": "d00009", "node_name": "spark-pair", "model": BIG},
+    "candidates": [
+        {"id": "d00009", "name": "spark-pair", "title": "Spark pair", "eligible": True, "reason": "ok", "load": 0.35, "latency_ms": 6, "free_bytes": None, "tps": 14.2, "chosen": True, "least_busy": True, "score": [0.35, 0, -14.2, 0]},
+        {"id": "d00001", "name": "spark-a", "title": "Spark A", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.35, "latency_ms": 4},
+        {"id": "d00002", "name": "spark-b", "title": "Spark B", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.44, "latency_ms": 5},
+        {"id": "d00003", "name": "studio", "title": "Mac Studio", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.0, "latency_ms": 9},
+        {"id": "d00004", "name": "strix", "eligible": False, "reason": "simulated outage (rehearsal) until 14:38", "load": 0.25, "latency_ms": 7}]})
+state["events"] = [
+    {"t": (NOW - timedelta(minutes=185)).timestamp(), "kind": "route", "text": "spark-b · gpt-oss:120b", "reason": "least busy box: spark-b"},
+    {"t": (NOW - timedelta(minutes=123)).timestamp(), "kind": "health", "text": "Spark B went down: timeout"},
+    {"t": (NOW - timedelta(minutes=122)).timestamp(), "kind": "route", "text": "cloud · openrouter/anthropic/claude-sonnet-4", "reason": "no box available, using cloud"},
+    {"t": (NOW - timedelta(minutes=121)).timestamp(), "kind": "served", "text": "cloud · openrouter · anthropic/claude-sonnet-4"},
+    {"t": (NOW - timedelta(minutes=117)).timestamp(), "kind": "health", "text": "Spark A is back"},
+    {"t": (NOW - timedelta(minutes=117)).timestamp(), "kind": "route", "text": "spark-a · gpt-oss:120b", "reason": "back on spark-a (it recovered)"},
+    {"t": (NOW - timedelta(minutes=116)).timestamp(), "kind": "served", "text": "Spark A · gpt-oss:120b"},
+    {"t": (NOW - timedelta(minutes=4)).timestamp(), "kind": "route", "text": "spark-pair · llama3.1:405b", "reason": "back to your main model on spark-pair"},
+    {"t": (NOW - timedelta(minutes=2)).timestamp(), "kind": "rehearsal", "text": "strix: simulated outage for 10 min (nothing stopped on the box)"},
+    {"t": (NOW - timedelta(minutes=1)).timestamp(), "kind": "served", "text": "Spark pair · llama3.1:405b"}]
+state["drift"] = []
+state["traffic"]["breakdown"] = {"local_in": 7_150_000, "local_out": 773_000, "aux_in": 410_000, "aux_out": 38_000,
+    "price_in_per_m": 3.0, "price_out_per_m": 15.0, "saved_in": 21.45, "saved_out": 11.6,
+    "calls_local": 993, "calls_local_counted": 981, "coverage": 0.988, "since": NOW.timestamp() - 6.5 * 86400,
+    "excluded": "cloud calls (they cost what they cost); local calls that reported no token counts",
+    "caveat": "Avoided API spend at the rates you entered, not profit: electricity, hardware and your time are not counted, and a local model may need more tokens than the cloud one."}
+state["traffic"]["saved"] = 33.05
+DOCTOR = {"checks": [
+    {"id": "enabled", "level": "ok", "title": "Plugin enabled for this profile", "detail": "", "fix": None},
+    {"id": "ctx:d00004:qwen3:14b", "level": "warn", "title": "strix: qwen3:14b has no context size set",
+     "detail": "Ollama's default context may be smaller than Hermes's system prompt (~15k tokens). Create a variant with a larger num_ctx.",
+     "fix": {"command": "printf 'FROM qwen3:14b\\nPARAMETER num_ctx 32768\\n' > Modelfile && ollama create qwen3:14b-32k -f Modelfile"}},
+    {"id": "excluded:d00004", "level": "info", "title": "strix: rehearsal", "detail": "Left out of new selections.", "fix": {"action": "include:d00004", "label": "Put back in selection"}},
+    {"id": "routing", "level": "ok", "title": "Routed to Spark pair · llama3.1:405b", "detail": "", "fix": None}]}
+(Path(__file__).parent / "demo-doctor.json").write_text(json.dumps(DOCTOR))
+
 # The demo clock is fixed; the page compares times with the viewer's clock, so shift everything to "now".
 shift = datetime.now(timezone.utc) - NOW
 
 
-def moved(v):
+def moved(v, key=None):
+    if key == "t" and isinstance(v, (int, float)):
+        return v + shift.total_seconds()
     if isinstance(v, str) and v.startswith("2026-11-09T"):
         return (datetime.fromisoformat(v) + shift).isoformat()
     if isinstance(v, dict):
-        return {k: moved(x) for k, x in v.items()}
+        return {k: moved(x, k) for k, x in v.items()}
     if isinstance(v, list):
         return [moved(x) for x in v]
     return v
