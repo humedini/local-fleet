@@ -6,7 +6,7 @@ import {
   Button, COMPOSER_AREAS, host, haptic, MODEL_MENU_ROW_AREA, PALETTE_AREA, Popover, PopoverContent, PopoverTrigger, ROUTES_AREA,
   SIDEBAR_NAV_AREA, STATUSBAR_AREAS, THEMES_AREA, useQuery, useQueryClient, useTheme
 } from '@hermes/plugin-sdk'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'local-fleet'
@@ -180,6 +180,19 @@ const CSS = `
 .hs-models span{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-tertiary,rgba(127,127,127,.12));color:var(--ui-text-secondary)}
 .hs-models span[data-want=true]{color:#000;background:${SPARK_GREEN}}
 .hs-models span[data-fallback=true]{color:${SPARK_GREEN};box-shadow:inset 0 0 0 1px color-mix(in srgb,${SPARK_GREEN} 60%,transparent)}
+.hs-section-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:18px 0 6px}
+.hs-section-row .hs-section{margin:0;margin-right:auto}
+.hs-mini{all:unset;cursor:pointer;font-size:11.5px;color:var(--ui-text-secondary);padding:2px 8px;border:1px solid var(--ui-stroke-tertiary);border-radius:6px}
+.hs-mini:hover{border-color:${SPARK_GREEN};color:var(--ui-text-primary)}
+.hs-mini[disabled]{opacity:.5;cursor:default}
+.hs-mini[data-sim=true]{border-color:var(--ui-orange,#df6500)}
+.hs-demo{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:70;width:min(760px,calc(100vw - 32px));display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:10px;background:var(--ui-bg-elevated,#1b1b20);border:1px solid ${SPARK_GREEN};box-shadow:0 18px 50px rgba(0,0,0,.5);font-size:13px}
+.hs-demo[data-sim=true]{border-color:var(--ui-orange,#df6500)}
+.hs-demo-text{flex:1;display:flex;flex-direction:column;gap:2px}
+.hs-demo-text small{color:var(--ui-text-tertiary)}
+.hs-demo-tag{font:600 10px/1 ui-monospace,monospace;letter-spacing:.08em;padding:3px 6px;border-radius:4px;background:var(--ui-orange,#df6500);color:#000;align-self:flex-start}
+.hs-demo-focus{outline:2px solid ${SPARK_GREEN};outline-offset:6px;border-radius:10px;transition:outline-color .3s}
+.hs-text-out{white-space:pre-wrap;font:12px ui-monospace,monospace;background:var(--ui-bg-tertiary,#1b1b20);border:1px solid var(--ui-stroke-tertiary);border-radius:8px;padding:12px;user-select:text}
 .hs-section{margin:18px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-tertiary)}
 .hs-timeline{display:flex;flex-direction:column;border-left:1px solid var(--ui-stroke-tertiary);margin-left:6px}
 .hs-ev{position:relative;padding:4px 0 6px 14px;font-size:12px}
@@ -398,6 +411,7 @@ function Chip({ ctx }) {
   const [open, setOpen] = useState(false)
   const q = useQuery({ queryKey: KEY, queryFn: () => ctx.rest('/status'), refetchInterval: 15000, retry: 1, staleTime: 5000 })
   if (q.data) LAST = q.data
+  useEffect(() => { if (q.data) refusalToast(q.data) }, [q.data])
   const failed = q.isError && !q.data
   const c = chip(q.data, failed)
   return jsxs(Popover, { open, onOpenChange: setOpen, children: [
@@ -817,6 +831,71 @@ function fresh(s, iso) {
   return age > 3 * (s.probe_interval_s || 30) ? 'stale' : 'fresh'
 }
 
+// Guided demo: the handover's path, each step on the real page. secs is how long a step stays up
+// (Pause holds it); sim marks steps that run rehearsals. Exit or Esc ends the packs' rehearsals.
+const DEMO_STEPS = [
+  { id: 'why', secs: 9, sim: false, caption: 'Why this box? The pick, the reason, and every box\'s verdict, with how fresh each probe is.' },
+  { id: 'rehearsal', secs: 10, sim: true, caption: 'Local A down: the box Hermes is on is rehearsed out and Hermes moves. Nothing is stopped on the box.' },
+  { id: 'cloud', secs: 10, sim: true, caption: 'Force cloud hop: every box rehearsed out, so Hermes goes to cloud (or refuses it, with private inference on).' },
+  { id: 'recovery', secs: 10, sim: true, caption: 'Recover: the rehearsals end and Hermes comes back to a box by itself. The recorder keeps configured and served apart.' },
+  { id: 'drift', secs: 8, sim: false, caption: 'Drift: if another writer changes Hermes\'s routing, Local Fleet says so here and never overwrites it silently.' },
+  { id: 'readiness', secs: 8, sim: false, caption: 'Readiness: tool calling, vision and context for each box and model, with where the evidence came from.' },
+  { id: 'savings', secs: 9, sim: false, caption: 'Spend avoided, with its working: the baseline model and rates, coverage, and what is not counted.' },
+  { id: 'doctor', secs: 10, sim: false, caption: 'Doctor: every check with a fix. Private inference and hidden addresses show up here too when they are on.' }
+]
+
+// Refusal toast: once per refusal the backend recorded with the cloud route it held back.
+let SEEN_REFUSAL = null
+let FOCUS_NEXT = null
+function refusalToast(s) {
+  const r = (s.events || []).filter(e => e.kind === 'refused' && e.avoided).slice(-1)[0]
+  const t = r ? r.t : 0
+  if (SEEN_REFUSAL === null) { SEEN_REFUSAL = t; return }  // nothing from before this window opened
+  if (!r || t <= SEEN_REFUSAL) return
+  SEEN_REFUSAL = t
+  host.notify({ id: `${ID}-refused-${t}`, kind: 'warning', title: 'Cloud refused',
+    message: `Would have gone to ${r.avoided}; refused, so Hermes stayed on your boxes.`,
+    detail: 'Private inference. Calls fail until a box is back.',
+    action: { label: 'Flight recorder', onClick: () => { FOCUS_NEXT = 'recorder'; host.navigate(PAGE_PATH) } } })
+}
+
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text)
+    host.notify({ kind: 'success', title: 'Local Fleet', message: `${label} copied (addresses removed)` })
+    return true
+  } catch {
+    return false  // the caller shows the text to copy by hand
+  }
+}
+
+function focusOn(key) {
+  document.querySelectorAll('.hs-demo-focus').forEach(el => el.classList.remove('hs-demo-focus'))
+  const el = key && document.querySelector(`[data-demo="${key}"]`)
+  if (el) { el.classList.add('hs-demo-focus'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+}
+
+function DemoBar({ demo, s, onPause, onSkip, onExit }) {
+  const step = DEMO_STEPS[demo.i]
+  if (!step) return null
+  const note = step.sim && !(s.applied || {}).kind ? ' Routing is off, so the map shows where Local Fleet would send Hermes.' : ''
+  const drift = step.id === 'drift' && !(s.drift || []).length ? ' Nothing has drifted right now.' : ''
+  return jsxs('div', { className: 'hs-demo', role: 'status', 'data-sim': step.sim, children: [
+    jsxs('div', { className: 'hs-demo-text', children: [
+      step.sim ? jsx('span', { className: 'hs-demo-tag', children: 'SIMULATION' }) : null,
+      jsx('span', { children: step.caption + note + drift }),
+      jsx('small', { children: `Guided demo · step ${demo.i + 1} of ${DEMO_STEPS.length}${demo.busy ? ' · working…' : ''}${demo.paused ? ' · paused' : ''} · Esc to exit` })] }),
+    jsx(Button, { size: 'sm', variant: 'outline', onClick: onPause, children: demo.paused ? 'Resume' : 'Pause' }),
+    jsx(Button, { size: 'sm', variant: 'outline', onClick: onSkip, children: 'Skip' }),
+    jsx(Button, { size: 'sm', onClick: onExit, children: 'Exit' })
+  ] })
+}
+
+function TextPanel({ text }) {
+  return jsxs('div', { children: [jsx('p', { className: 'hs-page-hint', children: 'Copying was blocked; select and copy this instead. Addresses are already removed.' }),
+    jsx('pre', { className: 'hs-text-out', children: text })] })
+}
+
 function WhyPanel({ s, focus, onRecheck, busy }) {
   const d = s.decision || s.last_decision || {}
   const cands = d.candidates || []
@@ -919,10 +998,16 @@ function ReadinessMatrix({ s }) {
   ] }) })
 }
 
-function SavingsPanel({ s }) {
+function ReceiptButtons({ onReceipt }) {
+  return jsxs('div', { style: { display: 'flex', gap: 8 }, children: [
+    jsx(Button, { size: 'sm', variant: 'outline', onClick: () => onReceipt('today'), children: 'Copy receipt: today' }),
+    jsx(Button, { size: 'sm', variant: 'outline', onClick: () => onReceipt('week'), children: 'Copy receipt: 7 days' })] })
+}
+
+function SavingsPanel({ s, onReceipt }) {
   const t = s.traffic || {}
   const b = t.breakdown || {}
-  if (t.saved == null) return jsx('p', { className: 'hs-page-hint', children: `No price yet: ${(b.baseline || {}).source || 'Hermes\'s rate card has none for your cloud backup'}.` })
+  if (t.saved == null) return jsxs('div', { children: [jsx('p', { className: 'hs-page-hint', children: `No price yet: ${(b.baseline || {}).source || 'Hermes\'s rate card has none for your cloud backup'}.` }), jsx(ReceiptButtons, { onReceipt })] })
   const n = v => (v || 0).toLocaleString()
   return jsxs('div', { className: 'hs-savings', children: [
     jsxs('div', { className: 'hs-why-route', children: [money(s, t.saved), ' avoided this week'] }),
@@ -935,7 +1020,8 @@ function SavingsPanel({ s }) {
     jsx('p', { children: `Baseline: ${(b.baseline || {}).model || 'not recorded'} (${(b.baseline || {}).source || ''}), rates ${(b.baseline || {}).rates || ''}. Tokens are what Hermes's own per-call usage reported.` }),
     (b.baseline || {}).note ? jsx('p', { children: b.baseline.note }) : null,
     jsx('p', { children: `Coverage: ${b.calls_local_counted || 0} of ${b.calls_local || 0} local calls reported token counts${b.coverage != null ? ` (${Math.round(b.coverage * 100)}%)` : ''}. Not counted: ${b.excluded || ''}.` }),
-    jsx('p', { className: 'hs-caveat', children: b.caveat })
+    jsx('p', { className: 'hs-caveat', children: b.caveat }),
+    jsx(ReceiptButtons, { onReceipt })
   ] })
 }
 
@@ -1001,6 +1087,70 @@ function FleetPage({ ctx }) {
       setBusy('')
     }
   }
+  // Guided demo: {i, paused, busy, packs} while running, else null.
+  const [demo, setDemo] = useState(() => (new URLSearchParams(window.location.search).get('demo') ? { i: 0, paused: false, busy: false, packs: false } : null))
+  const demoRef = useRef(null)
+  demoRef.current = demo
+  const post = async (path, body) => {
+    const next = await ctx.rest(path, { method: 'POST', body: body || {}, timeoutMs: 150000 })
+    qc.setQueryData(KEY, next)
+    return next
+  }
+  const enterStep = async (i) => {
+    const step = DEMO_STEPS[i]
+    setDemo(d => d && { ...d, busy: true })
+    try {
+      if (step.id === 'why') { setDrawer({ kind: 'why' }); await post('/why') }
+      if (step.id === 'rehearsal') { setDrawer(null); focusOn('map'); await post('/pack', { name: 'local-a-down' }) }
+      if (step.id === 'cloud') { focusOn('map'); await post('/pack', { name: 'force-cloud-hop' }) }
+      if (step.id === 'recovery') { await post('/pack', { name: 'recover-drift' }); focusOn('recorder') }
+      if (step.id === 'drift') focusOn(document.querySelector('[data-demo="drift"]') ? 'drift' : 'recorder')
+      if (step.id === 'readiness') focusOn('readiness')
+      if (step.id === 'savings') { focusOn(null); setDrawer({ kind: 'savings' }) }
+      if (step.id === 'doctor') setDrawer({ kind: 'doctor' })
+    } catch (err) {
+      host.notifyError(err, 'Guided demo step failed')
+    } finally {
+      setDemo(d => d && { ...d, busy: false, packs: d.packs || step.sim })
+    }
+  }
+  const exitDemo = async () => {
+    const d = demoRef.current
+    setDemo(null)
+    focusOn(null)
+    setDrawer(null)
+    if (d && d.packs) { try { await post('/pack', { end: true }) } catch (err) { host.notifyError(err, 'Ending the rehearsals failed') } }
+  }
+  const startDemo = () => {
+    if (!(LAST && (LAST.nodes || []).length)) { host.notify({ kind: 'warning', title: 'Guided demo', message: 'Register a box first (hermes fleet add).' }); return }
+    setDemo({ i: 0, paused: false, busy: false, packs: false })
+  }
+  const nextStep = () => setDemo(d => d && { ...d, i: d.i + 1, paused: false })
+  useEffect(() => {
+    if (!demo) return
+    if (demo.i >= DEMO_STEPS.length) { exitDemo(); return }
+    enterStep(demo.i)
+  }, [demo && demo.i])
+  useEffect(() => {
+    if (!demo || demo.paused || demo.busy || demo.i >= DEMO_STEPS.length) return
+    const t = setTimeout(nextStep, DEMO_STEPS[demo.i].secs * 1000)
+    return () => clearTimeout(t)
+  }, [demo && demo.i, demo && demo.paused, demo && demo.busy])
+  useEffect(() => {
+    if (!demo) return
+    const onKey = e => { if (e.key === 'Escape') exitDemo() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [Boolean(demo)])
+  useEffect(() => { if (FOCUS_NEXT && q.data) { const k = FOCUS_NEXT; FOCUS_NEXT = null; setTimeout(() => focusOn(k), 300) } }, [Boolean(q.data)])
+  const copyFrom = async (path, label) => {
+    try {
+      const r = await ctx.rest(path, { timeoutMs: 60000 })
+      if (!(await copyText(r.markdown, label))) setDrawer({ kind: 'text', title: label, text: r.markdown })
+    } catch (err) {
+      host.notifyError(err, `${label} failed`)
+    }
+  }
   if (q.data) LAST = q.data
   if (q.isError && !q.data) return jsx('div', { className: 'hs-page', children: jsx(Unreachable, { error: q.error, onRetry: () => q.refetch() }) })
   const s = q.data || {}
@@ -1045,23 +1195,38 @@ function FleetPage({ ctx }) {
         title: s.private_only ? ((s.private || {}).in_force ? 'In force: primary, fallback_providers, side tasks and subagents are on your boxes. Tools such as web search still use the internet.' : 'On, but not fully in force: see the banner') : 'Keep Hermes\'s model calls on your boxes: cloud fallback comes off, subagents use the fleet, and with no box up calls fail rather than reach cloud. Tools such as web search still use the internet.',
         onClick: () => run('private', '/private', { on: !s.private_only }), children: [jsx('i', {}), 'Private inference'] }),
       jsx(Button, { size: 'sm', variant: 'outline', onClick: () => setDrawer({ kind: 'doctor' }), children: 'Doctor' }),
+      jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy || demo), title: 'About 80 seconds through the page: why, a rehearsed outage to cloud and back, drift, readiness, savings, doctor. Rehearsals only; nothing is stopped on any box.',
+        onClick: startDemo, children: 'Guided demo' }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),
     jsx(PrivateBanner, { s, run, busy: Boolean(busy) }),
-    jsx(DriftBanner, { s, run, busy: Boolean(busy) }),
-    jsx(FleetMap, { s, onSelect: id => setDrawer({ kind: 'why', node: id }) }),
+    (s.drift || []).length ? jsx('div', { 'data-demo': 'drift', children: jsx(DriftBanner, { s, run, busy: Boolean(busy) }) }) : null,
+    jsx('div', { 'data-demo': 'map', children: jsx(FleetMap, { s, onSelect: id => setDrawer({ kind: 'why', node: id }) }) }),
     jsx('div', { className: 'hs-cards', children: nodes.slice().sort((x, y) => ((y.members || []).length > 0) - ((x.members || []).length > 0)).map(n =>
       jsx(NodeCard, { n, s, ctx, run, busy: Boolean(busy), onWhy: () => setDrawer({ kind: 'why', node: n.id }) }, n.id)) }),
-    jsx('div', { className: 'hs-section', children: 'Readiness: can each box run Hermes on your models?' }),
-    jsx(ReadinessMatrix, { s }),
-    jsx('div', { className: 'hs-section', children: 'Flight recorder' }),
-    jsx(Recorder, { events: s.events }),
+    jsxs('div', { 'data-demo': 'readiness', children: [
+      jsx('div', { className: 'hs-section', children: 'Readiness: can each box run Hermes on your models?' }),
+      jsx(ReadinessMatrix, { s })] }),
+    jsxs('div', { 'data-demo': 'recorder', children: [
+      jsxs('div', { className: 'hs-section-row', children: [
+        jsx('div', { className: 'hs-section', children: 'Flight recorder' }),
+        jsx('span', { className: 'hs-page-hint', children: 'Rehearse:' }),
+        ...[['local-a-down', 'Local A down'], ['force-cloud-hop', 'Force cloud hop'], ['recover-drift', 'Recover + drift']].map(([k, label]) =>
+          jsx('button', { type: 'button', className: 'hs-mini', 'data-sim': true, disabled: Boolean(busy || demo),
+            title: 'Simulation inside Local Fleet: nothing is stopped on any box', onClick: () => run('pack', '/pack', { name: k }), children: label }, k)),
+        jsx('button', { type: 'button', className: 'hs-mini', disabled: Boolean(busy || demo), title: 'End the rehearsals the packs started (yours stay)',
+          onClick: () => run('pack', '/pack', { end: true }), children: 'End packs' }),
+        jsx('button', { type: 'button', className: 'hs-mini', title: 'The last 24 h as Markdown for chat or Notion, addresses removed',
+          onClick: () => copyFrom('/incident?hours=24', 'Incident card'), children: 'Copy incident card' })] }),
+      jsx(Recorder, { events: s.events })] }),
     drawer && drawer.kind === 'why' && jsx(Drawer, { title: 'Why this box?', onClose: () => setDrawer(null),
       children: jsx(WhyPanel, { s, focus: drawer.node, busy: busy === 'why', onRecheck: () => run('why', '/why') }) }),
     drawer && drawer.kind === 'doctor' && jsx(Drawer, { title: 'Fleet doctor', onClose: () => setDrawer(null),
       children: jsx(DoctorPanel, { ctx, run, busy: Boolean(busy) }) }),
     drawer && drawer.kind === 'savings' && jsx(Drawer, { title: 'Cloud spend avoided: the working', onClose: () => setDrawer(null),
-      children: jsx(SavingsPanel, { s }) })
+      children: jsx(SavingsPanel, { s, onReceipt: w => copyFrom(`/receipt?window=${w}`, 'Savings receipt') }) }),
+    drawer && drawer.kind === 'text' && jsx(Drawer, { title: drawer.title, onClose: () => setDrawer(null), children: jsx(TextPanel, { text: drawer.text }) }),
+    demo ? jsx(DemoBar, { demo, s, onPause: () => setDemo(d => d && { ...d, paused: !d.paused }), onSkip: nextStep, onExit: exitDemo }) : null
   ] })
 }
 

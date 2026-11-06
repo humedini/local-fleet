@@ -122,6 +122,11 @@ The Local Fleet page (and the CLI) is where you run the fleet day to day:
 - **Drift.** If something else changes what Local Fleet wrote (you, or another plugin editing `fallback_providers` or the side-task blocks), Local Fleet notices, says so, and does not overwrite it. *Reapply* takes routing back; *Stop managing* leaves the config exactly as it is. `hermes fleet drift [--reapply|--relinquish]`.
 - **Readiness.** Per box and model: tool calling, vision and context size, with where each fact came from (Ollama's `/api/show` and `/api/ps`). A box is left out only on verified evidence: a model Ollama says cannot call tools, or a verified context below `min_context` (32k by default; Hermes's system prompt alone is ~15k tokens). Unknowns are shown as unknown. `hermes fleet readiness`.
 - **Workload on the map.** Each box is labelled with what it is doing: chat, side tasks (titles, compression), subagents, rehearsal or maintenance.
+- **Guided demo.** *Guided demo* walks the page in about 80 seconds: Why this box, a rehearsed outage, a hop to cloud, recovery, drift, readiness, savings and the doctor, each on the real panel with a caption. Steps that run rehearsals are tagged SIMULATION; Pause, Skip, Exit and Esc work at any point, and leaving ends the rehearsals it started. With routing off, the map shows where Local Fleet would send Hermes instead.
+- **Rehearsal packs.** Named simulations above the flight recorder (and `hermes fleet pack <name>`): *Local A down* (the box Hermes is on), *Force cloud hop* (every box, so cloud, or a refusal with private inference on) and *Recover + drift* (the packs' rehearsals end and drift is checked). Each step leaves a marker in the recorder; *End packs* clears only the rehearsals the packs started. While any rehearsal runs, a switch skips the warm-up and keep-loaded never holds a model on the stand-in box.
+- **Incident card.** *Copy incident card* (or `hermes fleet incident`) turns the last 24 hours of the recorder into Markdown for chat, Notion or a PR comment: window, simulated or real, the configured route, what actually served, and the events. Always scrubbed with the privacy filter, whatever the setting.
+- **Savings receipt.** *Copy receipt* in the savings drawer (or `hermes fleet receipt [--window today|week] [--json]`): avoided API cost for today or the week with its baseline, rates, coverage and what is not counted. The week matches the page; with no price it says unavailable.
+- **Cloud refused toast.** With private inference on, when Local Fleet refuses cloud because no box is up, Desktop says once which cloud route it held back, with a link to the recorder. Only when a cloud target is configured.
 - **Doctor.** The *Doctor* button lists every check with a one-click fix (probe again, auto-pick, reapply, end a rehearsal) or the exact command to run: boxes down, keys missing, readiness, cloud backup, drift, private inference, plain HTTP to a public address, and whether a watch loop is really running (its heartbeat, not the doctor's own probe). `hermes fleet doctor`. It complements `hermes doctor` and `hermes plugins doctor`.
 
 ## Private inference
@@ -255,6 +260,9 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet why` | the decision inspector: every box's verdict and score |
 | `hermes fleet events [-n N]` | the flight recorder |
 | `hermes fleet rehearse <box> [--minutes M] [--stop]` | simulated outage inside Local Fleet (nothing stopped) |
+| `hermes fleet pack local-a-down\|force-cloud-hop\|recover-drift\|end` | rehearsal packs: named simulations, and ending the ones they started |
+| `hermes fleet incident [--hours H] [--out file]` | the recorder as a scrubbed Markdown incident card |
+| `hermes fleet receipt [--window today\|week] [--json]` | savings receipt with its working |
 | `hermes fleet maintenance <box> on\|off` | leave a box out of new selections |
 | `hermes fleet drift [--reapply\|--relinquish]` | what changed outside Local Fleet, and what to do about it |
 | `hermes fleet readiness` | tools, vision and context per box and model, with evidence |
@@ -314,7 +322,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - **A standalone plugin.** An in-tree `hermes dgx` proposal (hermes-agent PR #28009) was closed in favour of plugins; Local Fleet is that shape.
 - **Not mixture-of-agents.** Plugins such as hermes-local-moa combine models for quality; Local Fleet picks where the one model runs.
 
-## Known limitations (v0.2.1)
+## Known limitations (v0.3.0)
 
 - Continuous switching needs `hermes fleet watch` running (see *Keeping it current*). The doctor judges that from the loop's own heartbeat.
 - Private inference covers Hermes's model routing only (see its table); it is not air-gapping.
@@ -345,6 +353,8 @@ export HERMES_HOME=$(mktemp -d)
 mkdir -p $HERMES_HOME/plugins && ln -s "$PWD" $HERMES_HOME/plugins/local-fleet
 hermes plugins enable local-fleet && hermes fleet setup
 ```
+
+Catalog storyboard (three frames of the invented fleet: local, a simulated cloud hop, recovered, stamped with version and commit): `scripts/screenshots/storyboard.sh`, which writes `docs/img/storyboard-*.png`. The README images come from `scripts/screenshots/shoot.sh`. Neither reads a real fleet.
 
 Tested with Hermes 0.22.7 on Linux against a GB10 box (ASUS Ascent GX10), an AMD Strix Halo laptop and an Apple silicon Mac, all running Ollama.
 

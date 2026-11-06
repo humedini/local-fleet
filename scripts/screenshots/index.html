@@ -19,7 +19,14 @@ html,body{margin:0;background:#0d0d10;color:var(--ui-text-primary);font:14px/1.4
 import plugin from './plugin.js'
 import { createRoot } from 'react-dom/client'
 import { createElement as h } from 'react'
-const status = await (await fetch('./demo-status.json')).json()
+const params = new URLSearchParams(location.search)
+const status = await (await fetch(`./${params.get('state') || 'demo-status'}.json`)).json()
+if (params.get('stamp')) {
+  const tag = document.createElement('div')
+  tag.textContent = params.get('stamp')
+  tag.style.cssText = 'position:fixed;left:14px;bottom:10px;z-index:99;font:11px ui-monospace,monospace;color:#8b8b94;background:#0d0d10cc;padding:3px 8px;border-radius:4px'
+  document.body.appendChild(tag)
+}
 const doctor = await (await fetch('./demo-doctor.json')).json()
 const regs = []
 plugin.register({ register: r => regs.push(r), onDispose() {}, storage: { get: (k, d) => d, set() {} }, rest: async (p) => (p.startsWith('/doctor') ? doctor : status) })

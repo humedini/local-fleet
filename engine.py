@@ -245,6 +245,9 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
             current = {"kind": "local", "node_id": node["id"], "model": current.get("model", ""),
                        "pinned": True}
         excluded = active_exclusions(state)
+        # While any rehearsal runs, a switch is part of a simulation: no warm-up wait and no
+        # keep-loaded hold on the stand-in box (a rehearsal must not fill a shared GPU's memory).
+        rehearsing = any(ex.get("kind") == "rehearsal" for ex in excluded.values())
         decision = decide(settings, f.nodes, results, current, excluded)
         decision["changed"] = not same_target(decision["target"], applied_now)
         target = decision["target"]
@@ -262,7 +265,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
             return decision
         changed = decision["changed"]
         decision["applied"] = False
-        if not dry_run and changed and target["kind"] == "local" and settings.get("warm_before_switch", True):
+        if not dry_run and changed and target["kind"] == "local" and settings.get("warm_before_switch", True) and not rehearsing:
             snap = results.get(target["node_id"]) or {}
             decision["warm"] = warm(f.find(target["node_id"]), target.get("model", ""), snap.get("resident") or [],
                                     timeout=float(settings.get("warm_timeout_s") or 120))
@@ -292,7 +295,7 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                 decision["fallback_added"] = config_write.ensure_fallback(entry["provider"], entry["model"])
                 state["fallback_ensured"] = entry
         if not dry_run:
-            decision["keep"] = _keep_loaded(settings, f, results, applied_now, state.get("applied") or {})
+            decision["keep"] = None if rehearsing else _keep_loaded(settings, f, results, applied_now, state.get("applied") or {})
         if not dry_run or aux_follow:  # side tasks are their own opt-in, independent of main routing
             decision["aux"] = _follow_aux(settings, f, results, decision, state)
         if state.get("paused"):
@@ -325,6 +328,11 @@ def _refuse(settings, f, results, decision, state, dry_run, aux_follow) -> dict:
     target = decision["target"]
     decision["applied"] = False
     decision["warning"] = target["reason"]
+    # The cloud route this refusal held back: only when one is configured, so a refusal with no cloud
+    # alternative never claims to have saved anything. Shown once per refusal (Desktop toast).
+    cp, cm = settings.get("cloud_provider"), settings.get("cloud_model")
+    avoided = f"{cp}/{cm}" if cp and cm else None
+    decision["avoided_cloud"] = avoided
     was_refused = (state.get("last_decision") or {}).get("target", {}).get("kind") == "refused"
     held = private.primary_is_local(config_write._load(), private.local_urls(f.nodes))
     if not dry_run and not held and target.get("node_id"):
@@ -334,10 +342,10 @@ def _refuse(settings, f, results, decision, state, dry_run, aux_follow) -> dict:
         state["applied"] = {k: target[k] for k in ("kind", "node_id", "node_name", "base_url", "model") if target.get(k) is not None}
         decision["applied"] = True
         events.record("refused", f"private inference: no box available; primary held on {node.get('title') or node['name']} "
-                                 "so calls fail instead of reaching cloud")
+                                 "so calls fail instead of reaching cloud", avoided=avoided)
     elif not dry_run and not was_refused:
         events.record("refused", "private inference: no box available, cloud refused" + ("" if held else
-                      "; no registered box to hold the primary on"))
+                      "; no registered box to hold the primary on"), avoided=avoided)
     if not dry_run or aux_follow:
         decision["aux"] = _follow_aux(settings, f, results, decision, state)
     state["last_decision"] = decision
@@ -438,7 +446,7 @@ def _keep_loaded(settings, f, results, before: dict, now: dict) -> str | None:
         return None
 
 
-def exclude(ref: str, kind: str, minutes: float | None = None) -> dict:
+def exclude(ref: str, kind: str, minutes: float | None = None, pack: str | None = None) -> dict:
     """Leave a box out of selection: kind "rehearsal" (a simulated outage inside Local Fleet only,
     expiring after `minutes`) or "maintenance" (until turned off). Nothing is stopped on the box and
     requests already running there finish. Re-routes only if routing is on."""
@@ -448,11 +456,12 @@ def exclude(ref: str, kind: str, minutes: float | None = None) -> dict:
         until = (datetime.now(timezone.utc) + timedelta(minutes=minutes or 10)).isoformat(timespec="seconds") \
             if kind == "rehearsal" else None
         state.setdefault("exclusions", {})[node["id"]] = {"kind": kind, "until": until, "since": now_iso(),
-                                                          "label": node.get("title") or node["name"]}
+                                                          "label": node.get("title") or node["name"],
+                                                          **({"pack": pack} if pack else {})}
         store.save_state(state)
     label = node.get("title") or node["name"]
     events.record(kind, f"{label}: simulated outage for {int(minutes or 10)} min (nothing stopped on the box)"
-                  if kind == "rehearsal" else f"{label}: maintenance on, left out of new selections", box=node["name"])
+                  if kind == "rehearsal" else f"{label}: maintenance on, left out of new selections", box=node["name"], pack=pack)
     return apply_policy(dry_run=not store.load_state().get("applied"))
 
 

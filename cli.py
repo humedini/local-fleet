@@ -81,6 +81,14 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("node")
     p.add_argument("--minutes", type=float, default=10)
     p.add_argument("--stop", action="store_true", help="end the rehearsal now")
+    p = sub.add_parser("pack", help="Rehearsal packs: named simulations (local-a-down, force-cloud-hop, recover-drift) or end")
+    p.add_argument("name", choices=("local-a-down", "force-cloud-hop", "recover-drift", "end"))
+    p = sub.add_parser("incident", help="The flight recorder as a scrubbed Markdown incident card, to paste anywhere")
+    p.add_argument("--hours", type=float, default=24)
+    p.add_argument("--out", help="write it to this file instead of printing")
+    p = sub.add_parser("receipt", help="Savings receipt (scrubbed Markdown, or JSON) for today or the week")
+    p.add_argument("--window", choices=("today", "week"), default="today")
+    p.add_argument("--json", action="store_true")
     p = sub.add_parser("maintenance", help="Leave a box out of new selections (running requests finish)")
     p.add_argument("node")
     p.add_argument("action", choices=("on", "off"))
@@ -418,6 +426,28 @@ def _dispatch(cmd: str, args) -> int:
             d = engine.exclude(args.node, "rehearsal" if cmd == "rehearse" else "maintenance",
                                args.minutes if cmd == "rehearse" else None)
         print(render.decision_text(d))
+        return 0
+    if cmd == "pack":
+        from . import packs
+        if args.name == "end":
+            r = packs.end()
+            print(f"packs ended: {r['ended']} rehearsal(s) cleared")
+            return 0
+        d = packs.run(args.name)
+        print(f"{packs.PACKS[args.name]} (simulation): {d['note']}\n" + render.decision_text(d))
+        return 0
+    if cmd in ("incident", "receipt"):
+        from . import reports
+        if cmd == "incident":
+            text = reports.incident_card(args.hours)
+        else:
+            md, data = reports.savings_receipt(args.window)
+            text = json.dumps(data, indent=2) if args.json else md
+        if getattr(args, "out", None):
+            open(args.out, "w").write(text)
+            print(f"wrote {args.out}")
+        else:
+            print(text, end="")
         return 0
     if cmd == "drift":
         if args.reapply:

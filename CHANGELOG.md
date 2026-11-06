@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-11-06)
+
+- Guided demo on the Local Fleet page: about 80 seconds through why, a rehearsed outage to cloud and back, drift, readiness, savings and the doctor, on the real panels, with simulation labels, Pause, Skip, Exit and Esc.
+- Rehearsal packs: Local A down, Force cloud hop, Recover + drift (`hermes fleet pack`), with recorder markers and a cleanup that ends only their own rehearsals. While a rehearsal runs, no warm-up and no keep-loaded hold on the stand-in box.
+- Incident card (`hermes fleet incident`, *Copy incident card*) and savings receipt (`hermes fleet receipt`, *Copy receipt*): Markdown (and JSON) always scrubbed with the privacy filter.
+- Cloud refused toast in private mode, naming the cloud route held back, only when one is configured.
+- Catalog storyboard generator (`scripts/screenshots/storyboard.sh`): three stamped frames from synthetic data.
+
 ## 0.2.1 (2026-11-06)
 
 - The savings baseline needs no typing: with no price set, the cloud backup's rates come from Hermes's own rate card (`agent.usage_pricing`), at most daily, in USD. A subscription route such as `openai-codex` uses the same model's API list price and says so. `hermes fleet price` shows the rates in use; `--auto` drops your own.

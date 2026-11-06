@@ -11,6 +11,7 @@ Your local inference fleet, operated from Hermes Desktop: Hermes runs on the lea
 - Fleet registry (`hermes fleet add / list / rm`), kinds ollama, vllm, litellm, openai-compatible
 - Live health: up/down, latency, load from Ollama `/api/ps` or vLLM `/metrics`, free memory
 - Least-busy-box routing that does not flip-flop, with label preferences and pinning
+- A guided demo, rehearsal packs, and scrubbed incident cards and savings receipts to paste anywhere
 - Operations: why-this-box inspector, flight recorder (configured vs served), outage rehearsal, maintenance, drift detection that never fights other plugins, readiness evidence per box and model, an auditable savings breakdown, doctor with one-click fixes
 - Private inference: primary, fallback_providers, side tasks and subagents held to your boxes, failing rather than using cloud, with a status that says when something outside Local Fleet breaks it (not air-gapping)
 - Modes: prefer-local, prefer-cloud, auto

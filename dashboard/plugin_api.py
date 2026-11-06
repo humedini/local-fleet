@@ -155,6 +155,39 @@ async def include(body: dict):
     return await _run(lambda: _view(engine.include(str(body.get("node") or ""))))
 
 
+@router.post("/pack")
+async def pack(body: dict):
+    """Run a rehearsal pack ({"name": ...}) or end the packs' rehearsals ({"end": true})."""
+    from local_fleet_desktop_api import packs
+
+    def run():
+        if body.get("end"):
+            r = packs.end()
+            return {**_view(r.get("decision")), "pack": {"ended": r["ended"]}}
+        name = str(body.get("name") or "")
+        if name not in packs.PACKS:
+            raise FleetError(f"unknown pack {name!r}; choose from {', '.join(packs.PACKS)}")
+        d = packs.run(name)
+        return {**_view(d), "pack": {"name": name, "note": d["note"]}}
+    return await _run(run, status_code=400)
+
+
+@router.get("/incident")
+async def incident(hours: float = 24):
+    from local_fleet_desktop_api import reports
+    return await _run(lambda: {"markdown": reports.incident_card(hours)})
+
+
+@router.get("/receipt")
+async def receipt(window: str = "today"):
+    from local_fleet_desktop_api import reports
+
+    def run():
+        md, data = reports.savings_receipt("week" if window == "week" else "today")
+        return {"markdown": md, "json": data}
+    return await _run(run)
+
+
 @router.post("/reapply")
 async def reapply():
     return await _run(lambda: _view(engine.reapply()))

@@ -179,4 +179,36 @@ def moved(v, key=None):
 
 
 (Path(__file__).parent / "demo-status.json").write_text(json.dumps(moved(state)))
+
+# Storyboard frames (storyboard.sh): the same invented fleet, local -> simulated cloud hop -> recovered.
+import copy  # noqa: E402
+
+ev = lambda m, kind, text, **kw: {"t": (NOW - timedelta(minutes=m)).timestamp(), "kind": kind, "text": text, **kw}  # noqa: E731
+base_events = [e for e in state["events"] if e["kind"] != "rehearsal"][:-1]
+local = copy.deepcopy(state)
+local.update(exclusions={}, events=base_events, drift=[])
+cloud = copy.deepcopy(local)
+until = (NOW + timedelta(minutes=9)).isoformat()
+cloud["exclusions"] = {n["id"]: {"kind": "rehearsal", "until": until, "since": iso(1), "label": n.get("title") or n["name"],
+                                 "pack": "force-cloud-hop"} for n in nodes}
+cloud["applied"] = {"kind": "cloud", "provider": "openrouter", "model": "anthropic/claude-sonnet-4", "via": "failover"}
+cloud["label"] = "cloud"
+cloud["delegations"] = []
+for b in cloud["traffic"]["boxes"].values():
+    b["live"] = 0  # every box is rehearsed out: nothing is taking calls on them
+cloud["last_decision"] = {**cloud["last_decision"], "target": {"kind": "cloud", "provider": "openrouter", "model": "anthropic/claude-sonnet-4"},
+                          "reason": "no box available with llama3.1:405b, gpt-oss:120b or qwen3:14b, using cloud"}
+cloud["events"] = base_events + [
+    ev(1.2, "pack", "Force cloud hop: start (simulation: nothing is stopped on any box)", pack="force-cloud-hop"),
+    *[ev(1.1, "rehearsal", f"{n.get('title') or n['name']}: simulated outage for 10 min (nothing stopped on the box)", pack="force-cloud-hop") for n in nodes],
+    ev(1.0, "route", "cloud · openrouter/anthropic/claude-sonnet-4", reason="no box available, using cloud"),
+    ev(0.9, "pack", "Force cloud hop: 5 box(es) rehearsed out: Hermes on cloud", pack="force-cloud-hop")]
+recover = copy.deepcopy(local)
+recover["events"] = cloud["events"] + [
+    *[ev(0.4, "rehearsal", f"{n.get('title') or n['name']}: back in selection", pack="force-cloud-hop") for n in nodes],
+    ev(0.35, "route", "spark-pair · llama3.1:405b", reason="back on spark-pair (it recovered)"),
+    ev(0.3, "pack", "Recover + drift: 5 rehearsal(s) ended; drift check: none, Hermes's config is as Local Fleet left it", pack="recover-drift"),
+    ev(0.1, "served", "Spark pair · llama3.1:405b")]
+for name, frame in (("local", local), ("cloud", cloud), ("recover", recover)):
+    (Path(__file__).parent / f"storyboard-{name}.json").write_text(json.dumps(moved(frame)))
 print("wrote demo-status.json")
