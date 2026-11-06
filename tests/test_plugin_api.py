@@ -51,3 +51,15 @@ def test_operations_routes(client, hermes):  # noqa: F811
     assert client.post(f"{base}/exclude", json={"node": gx["id"], "kind": "nope"}).status_code == 400
     d = client.get(f"{base}/doctor").json()
     assert any(c["id"] == "routing" for c in d["checks"])
+
+
+@respx.mock
+def test_toggle_routes_answer_with_the_state_after_the_change(client, hermes):  # noqa: F811
+    boxes()
+    base = "/api/plugins/local-fleet"
+    on = client.post(f"{base}/private", json={"on": True}).json()
+    assert on["private_only"] is True and on["private"]["in_force"] and "in force" in on["decision"]["reason"]
+    assert client.post(f"{base}/private", json={"on": False}).json()["private_only"] is False
+    assert client.post(f"{base}/keep", json={"on": True}).json()["keep_loaded"] is True
+    client.post(f"{base}/use", json={"node": "best"})
+    assert client.post(f"{base}/relinquish").json()["applied"] == {}

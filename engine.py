@@ -563,6 +563,8 @@ def snapshot() -> dict:
         label = applied.get("node_name") or "local"
     elif applied.get("kind") == "cloud":
         label = "cloud"
+    elif applied.get("kind") == "refused":
+        label = "refused"
     else:
         label = "off"
     healthy = [n for n in f.enabled() if (n.get("last_health") or {}).get("status") in ("ok", "degraded")]

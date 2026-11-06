@@ -43,6 +43,12 @@ def _view(decision: dict | None = None) -> dict:
     return snap
 
 
+def _after(action) -> dict:
+    """Run an action that returns a message, then the view: the response shows the state after it."""
+    msg = action()
+    return {**_view(), "decision": {"reason": msg}}
+
+
 def _private(v):
     """Every response and error goes through here: with privacy on, no address field and no
     address inside any text (probe errors, reasons, the recorder) leaves the backend."""
@@ -110,13 +116,13 @@ async def aux_toggle(body: dict):
 @router.post("/private")
 async def private(body: dict):
     on = bool(body.get("on"))
-    return await _run(lambda: {**_view(), "decision": {"reason": engine.set_private(on)}})
+    return await _run(lambda: _after(lambda: engine.set_private(on)))
 
 
 @router.post("/keep")
 async def keep(body: dict):
     on = bool(body.get("on"))
-    return await _run(lambda: {**_view(), "decision": {"reason": engine.set_keep(on)}})
+    return await _run(lambda: _after(lambda: engine.set_keep(on)))
 
 
 @router.post("/rename")
@@ -156,7 +162,7 @@ async def reapply():
 
 @router.post("/relinquish")
 async def relinquish():
-    return await _run(lambda: {**_view(), "decision": {"reason": engine.relinquish()}})
+    return await _run(lambda: _after(engine.relinquish))
 
 
 @router.get("/doctor")

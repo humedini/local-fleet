@@ -504,7 +504,7 @@ function Hub({ s }) {
 function Cloud({ s, live }) {
   const chain = (s.fallback_chain || []).filter(e => e.provider && e.provider !== 'custom')
   const last = chain[chain.length - 1]
-  const label = live ? `${(s.applied || {}).provider}/${(s.applied || {}).model}` : last ? `${last.provider}/${last.model}` : 'no cloud backup'
+  const label = live ? `${(s.applied || {}).provider}/${(s.applied || {}).model}` : s.private_only ? 'refused: private inference' : last ? `${last.provider}/${last.model}` : 'no cloud backup'
   const { x, y } = CLOUD
   return jsxs('g', { opacity: live ? 1 : 0.7, children: [
     jsx('path', { d: `M${x - 44} ${y + 14} a18 18 0 0 1 6 -34 a26 26 0 0 1 48 -6 a20 20 0 0 1 30 18 a16 16 0 0 1 -4 22 z`,
@@ -1014,7 +1014,7 @@ function FleetPage({ ctx }) {
     jsxs('div', { className: 'hs-stats', children: [
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: nodes.length }), jsx('span', { children: 'Boxes' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: `${s.healthy ?? '…'}/${enabled.length}` }), jsx('span', { children: 'Healthy' })] }),
-      jsxs('div', { className: 'hs-stat', children: [jsx('b', { style: a.kind === 'local' ? { color: SPARK_GREEN } : undefined, children: a.kind === 'local' ? a.node_name : a.kind === 'cloud' ? 'cloud' : '—' }), jsx('span', { children: 'Routed to' })] }),
+      jsxs('div', { className: 'hs-stat', children: [jsx('b', { style: a.kind === 'local' ? { color: SPARK_GREEN } : undefined, children: a.kind === 'local' ? a.node_name : a.kind === 'cloud' ? 'cloud' : a.kind === 'refused' ? 'refused' : '—' }), jsx('span', { children: 'Routed to' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: (s.traffic || {}).local_share != null ? `${Math.round(s.traffic.local_share * 100)}%` : '—' }), jsx('span', { children: 'Tokens run locally (7 d)' })] }),
       jsxs('button', { type: 'button', className: 'hs-stat hs-stat-btn', onClick: () => setDrawer({ kind: 'savings' }),
