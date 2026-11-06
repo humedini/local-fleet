@@ -122,7 +122,7 @@ def _median(xs):
 
 
 def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: float | None = None,
-              baseline: str = "") -> dict:
+              baseline: str | dict = "") -> dict:
     """Per-box and fleet totals over `lines` (one week by default).
 
     Per box: calls, errors, tokens, `live` (calls in the last 90 s), effective tok/s (median of
@@ -176,7 +176,8 @@ def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: 
                 "local_in": local_in, "local_out": local_out, "aux_in": aux_in, "aux_out": aux_out,
                 "main_in": local_in - aux_in, "main_out": local_out - aux_out,
                 "price_in_per_m": price_in, "price_out_per_m": price_out,
-                "baseline": {"model": baseline or None, "rates": "entered by you (hermes fleet price)",
+                "baseline": baseline if isinstance(baseline, dict) else
+                            {"model": baseline or None, "rates": "entered by you (hermes fleet price)",
                              "source": "recorded with the prices" if baseline else
                                        "not recorded: re-enter the prices with --model provider/model"},
                 "saved_in": round(local_in * price_in / 1e6, 4), "saved_out": round(local_out * price_out / 1e6, 4),
@@ -184,6 +185,6 @@ def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: 
                 "coverage": round(calls_local_counted / calls_local, 3) if calls_local else None,
                 "since": first_t,
                 "excluded": "cloud calls (they cost what they cost); local calls that reported no token counts",
-                "caveat": "Avoided API spend at the rates you entered, not profit: electricity, hardware and "
+                "caveat": "Avoided API spend at these rates, not profit: electricity, hardware and "
                           "your time are not counted, and a local model may need more tokens than the cloud one.",
             }}

@@ -169,10 +169,12 @@ Local Fleet listens to Hermes's own per-call observer hooks and keeps, per call,
 
 ```bash
 hermes fleet stats
-hermes fleet price 3 15 --currency GBP   # your cloud model's price per million tokens (input, output)
+hermes fleet price                       # the rates in use and where they came from
 ```
 
-Amounts are shown in your currency: the Desktop formats them with your locale's rules (symbol position, decimal comma, grouping), the terminal with the currency's sign. Prices are whatever you enter, in that currency; nothing is converted or fetched.
+There is nothing to set: the cloud backup's price comes from Hermes's own rate card (the one behind Hermes's cost display: official price snapshots, the OpenRouter models API, models.dev), looked up at most once a day, in US dollars. A subscription route such as `openai-codex` has no per-token price, so it uses the same model's API list price and says so. To use your own rates instead, `hermes fleet price 3 15 --currency GBP --model provider/model`; `hermes fleet price --auto` goes back to the rate card. Nothing is converted between currencies.
+
+Amounts are formatted for your locale in the Desktop (symbol position, decimal comma, grouping) and with the currency's sign in the terminal.
 
 `stats` shows calls, errors, effective tok/s (real calls with 32+ output tokens, prompt processing included) and median latency per box, how many of the week's tokens ran locally, and what those would have cost on cloud. The Desktop map lights the wire of every box taking calls right now, subagents included.
 
@@ -238,7 +240,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet drift [--reapply\|--relinquish]` | what changed outside Local Fleet, and what to do about it |
 | `hermes fleet readiness` | tools, vision and context per box and model, with evidence |
 | `hermes fleet stats` | real traffic per box, local share, spend avoided |
-| `hermes fleet price <in> <out> [--currency CODE]` | cloud price per million tokens, in an ISO 4217 currency (`£ € $ ¥` accepted) |
+| `hermes fleet price [<in> <out> [--currency CODE] [--model p/m]] [--auto]` | show the rates in use (looked up in Hermes's rate card by default), or set your own per million tokens |
 | `hermes fleet endpoint` | the primary Hermes is using |
 | `hermes fleet doctor` | readiness check |
 | `hermes fleet restore` | put back your original primary |
@@ -275,7 +277,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 
 ## Disclosures
 
-- **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), Ollama's `/api/show` for each of your models on each box at most hourly (readiness), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. Nothing else, no telemetry.
+- **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), Ollama's `/api/show` for each of your models on each box at most hourly (readiness), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. The cloud price comes from Hermes's own rate-card lookup (`agent.usage_pricing`; it may fetch the OpenRouter models API or models.dev, cached by Hermes), at most daily and only when you have not set a price. Nothing else, no telemetry.
 - **Files**: reads and writes `fleet.json`, `state.json`, `events.jsonl` (the flight recorder, last 400 events; addresses are masked before they are stored) and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory.
 - **Config writes**: `model.provider`, `model.default`, `model.base_url`, `model.api_mode`, `model.key_env` (the original primary is saved; `restore` puts it back); one appended `fallback_providers` entry for your cloud model; on request `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` `provider`, `model`, `base_url`, `fallback_chain` (`aux on/off`; the previous blocks come back on off, and a task holding its own `api_key` is never taken over); with `private on`, removal of non-local `fallback_providers` entries (put back on off), `delegation.backend: fleet` (previous backend put back on off) and side tasks without a cloud `fallback_chain`. Its own settings live under `plugins.entries.local-fleet.settings`.
 - **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`), with a speed bench when one is due. `hermes fleet watch` runs only when you start it. Observer hooks (`post_api_request`, `api_request_error`, `post_auxiliary_call`) append one line per call; `on_session_start` runs the background probe.
@@ -298,7 +300,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - Continuous switching needs `hermes fleet watch` running (see *Keeping it current*). The doctor judges that from the loop's own heartbeat.
 - Private inference covers Hermes's model routing only (see its table); it is not air-gapping.
 - State saved by v0.1.0 before the literal-key guard may still hold a side-task key in `state.json`; the doctor says so, and `hermes fleet aux off` puts it back in config and drops it. Nothing scrubs it silently.
-- The savings baseline is the model you name with `hermes fleet price … --model`; prices entered before 0.2.0 show it as not recorded.
+- The savings baseline is your cloud backup at Hermes's rate-card price (USD), or the model you name with your own prices; prices entered before 0.2.0 without `--model` show the model as not recorded.
 - If loading a model on the new box fails during a switch, the switch still happens and the toast says why; it does not yet try the next box instead.
 - Load for Ollama boxes counts models in memory; it cannot see other GPU work (training jobs). Speeds are snapshots.
 - Clusters are shown and routed, not created; the interconnect label is what you declare.

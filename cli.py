@@ -90,9 +90,10 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--relinquish", action="store_true")
     sub.add_parser("readiness", help="Can each box run Hermes on your models? Tools, vision, context, with evidence")
     sub.add_parser("stats", help="Real traffic per box this week: calls, tok/s, latency, local share, spend avoided")
-    p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
-    p.add_argument("input", type=float)
-    p.add_argument("output", type=float)
+    p = sub.add_parser("price", help="Cloud price per million tokens for spend avoided (default: looked up in Hermes's rate card)")
+    p.add_argument("input", type=float, nargs="?", help="your own input price per million (omit to see the current rates)")
+    p.add_argument("output", type=float, nargs="?")
+    p.add_argument("--auto", action="store_true", help="drop your own prices and use Hermes's rate card for the cloud backup")
     p.add_argument("--currency", default=None, help="ISO 4217 code (GBP, EUR, USD, …) or £ € $ ¥")
     p.add_argument("--model", dest="price_model", help="the cloud model these prices are for, provider/model "
                    "(default: your cloud backup); shown as the savings baseline")
@@ -203,8 +204,10 @@ def snapshot_view(probe: bool = False) -> dict:
 def stats_text() -> str:
     from . import traffic
     s = store.read_settings()
-    t = traffic.summarize(traffic.load(), (float(s["price_in_per_m"] or 0), float(s["price_out_per_m"] or 0)),
-                          baseline=s.get("price_model") or "")
+    from . import pricing
+    eff = pricing.effective(s, store.load_state().get("auto_price"))
+    s = {**s, "currency": eff["currency"]}
+    t = traffic.summarize(traffic.load(), (eff["in"], eff["out"]), baseline=eff["baseline"])
     names = {n["id"]: n["name"] for n in store.fleet().nodes}
     lines = [f"  {'box':<12} {'calls':>6} {'errors':>6} {'tok/s':>7} {'latency':>8} {'tokens':>9}"]
     for nid, b in sorted(t["boxes"].items(), key=lambda kv: -kv[1]["calls"]):
@@ -225,10 +228,12 @@ def stats_text() -> str:
                      f"side tasks {b['aux_in'] + b['aux_out']:,} of those")
         lines.append(f"  coverage: {b['calls_local_counted']} of {b['calls_local']} local calls reported token counts ({cov})")
         lines.append(f"  baseline: {b['baseline']['model'] or '?'} ({b['baseline']['source']}); rates {b['baseline']['rates']}")
+        if b["baseline"].get("note"):
+            lines.append(f"  note: {b['baseline']['note']}")
         lines.append(f"  not counted: {b['excluded']}")
         lines.append(f"  {b['caveat']}")
     else:
-        lines.append("spend avoided: set a cloud price with hermes fleet price <in> <out> [--currency GBP]")
+        lines.append("spend avoided: no price for your cloud backup in Hermes's rate card; set one with hermes fleet price <in> <out>")
     lines.append("(tok/s here is effective: real calls including prompt processing; hermes fleet bench gives decode speed)")
     return "\n".join(lines)
 
@@ -430,7 +435,26 @@ def _dispatch(cmd: str, args) -> int:
     if cmd == "stats":
         print(stats_text())
         return 0
+    if cmd == "price" and (args.auto or args.input is None):
+        if args.auto:
+            for k in ("price_in_per_m", "price_out_per_m"):
+                store.write_setting(k, 0.0)
+            store.write_setting("price_model", "")
+        from . import pricing
+        s = store.read_settings()
+        engine.refresh_price(s, force=args.auto)
+        eff = pricing.effective(s, store.load_state().get("auto_price"))
+        b = eff["baseline"]
+        if not (eff["in"] or eff["out"]):
+            print(f"no price: {b['source']}")
+            return 1
+        print(f"{store.format_money(eff['in'], eff['currency'])} in / {store.format_money(eff['out'], eff['currency'])} out per million"
+              f" for {b['model']} · {b['rates']}" + (f"\n{b['note']}" if b.get("note") else ""))
+        return 0
     if cmd == "price":
+        if args.output is None:
+            print("✗ give both prices: hermes fleet price <input> <output>, or --auto")
+            return 1
         try:
             code = store.currency_code(args.currency) if args.currency else store.read_settings()["currency"]
         except ValueError as e:

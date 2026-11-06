@@ -922,7 +922,7 @@ function ReadinessMatrix({ s }) {
 function SavingsPanel({ s }) {
   const t = s.traffic || {}
   const b = t.breakdown || {}
-  if (t.saved == null) return jsx('p', { className: 'hs-page-hint', children: 'Set your cloud model\'s price first: hermes fleet price <input> <output> --currency GBP' })
+  if (t.saved == null) return jsx('p', { className: 'hs-page-hint', children: `No price yet: ${(b.baseline || {}).source || 'Hermes\'s rate card has none for your cloud backup'}.` })
   const n = v => (v || 0).toLocaleString()
   return jsxs('div', { className: 'hs-savings', children: [
     jsxs('div', { className: 'hs-why-route', children: [money(s, t.saved), ' avoided this week'] }),
@@ -932,7 +932,8 @@ function SavingsPanel({ s }) {
       jsxs('tr', { children: [jsx('td', { children: 'Output' }), jsx('td', { children: n(b.local_out) }), jsx('td', { children: money(s, b.price_out_per_m || 0) }), jsx('td', { children: money(s, b.saved_out || 0) })] }),
       jsxs('tr', { children: [jsx('td', { children: 'of which side tasks' }), jsx('td', { children: n((b.aux_in || 0) + (b.aux_out || 0)) }), jsx('td', { children: '' }), jsx('td', { children: '' })] })
     ] }) }),
-    jsx('p', { children: `Baseline: ${(b.baseline || {}).model || 'not recorded'} at the rates you entered (${(b.baseline || {}).source || 'hermes fleet price'}). Tokens are what Hermes's own per-call usage reported.` }),
+    jsx('p', { children: `Baseline: ${(b.baseline || {}).model || 'not recorded'} (${(b.baseline || {}).source || ''}), rates ${(b.baseline || {}).rates || ''}. Tokens are what Hermes's own per-call usage reported.` }),
+    (b.baseline || {}).note ? jsx('p', { children: b.baseline.note }) : null,
     jsx('p', { children: `Coverage: ${b.calls_local_counted || 0} of ${b.calls_local || 0} local calls reported token counts${b.coverage != null ? ` (${Math.round(b.coverage * 100)}%)` : ''}. Not counted: ${b.excluded || ''}.` }),
     jsx('p', { className: 'hs-caveat', children: b.caveat })
   ] })
@@ -1019,7 +1020,7 @@ function FleetPage({ ctx }) {
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: s.mode || '…' }), jsx('span', { children: 'Mode' })] }),
       jsxs('div', { className: 'hs-stat', children: [jsx('b', { children: (s.traffic || {}).local_share != null ? `${Math.round(s.traffic.local_share * 100)}%` : '—' }), jsx('span', { children: 'Tokens run locally (7 d)' })] }),
       jsxs('button', { type: 'button', className: 'hs-stat hs-stat-btn', onClick: () => setDrawer({ kind: 'savings' }),
-        title: (s.traffic || {}).saved == null ? 'Set a cloud price: hermes fleet price <in> <out> --currency GBP' : 'How this is worked out', children: [
+        title: (s.traffic || {}).saved == null ? 'No price found for your cloud backup' : 'How this is worked out', children: [
         jsx('b', { style: (s.traffic || {}).saved ? { color: SPARK_GREEN } : undefined, children: (s.traffic || {}).saved != null ? money(s, s.traffic.saved) : '—' }),
         jsx('span', { children: 'Cloud spend avoided (7 d)' })] })
     ] }),

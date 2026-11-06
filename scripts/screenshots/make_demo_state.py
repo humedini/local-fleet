@@ -150,7 +150,7 @@ state["traffic"]["breakdown"] = {"local_in": 7_150_000, "local_out": 773_000, "a
     "baseline": {"model": "anthropic/claude-sonnet-4", "rates": "entered by you (hermes fleet price)", "source": "recorded with the prices"},
     "calls_local": 993, "calls_local_counted": 981, "coverage": 0.988, "since": NOW.timestamp() - 6.5 * 86400,
     "excluded": "cloud calls (they cost what they cost); local calls that reported no token counts",
-    "caveat": "Avoided API spend at the rates you entered, not profit: electricity, hardware and your time are not counted, and a local model may need more tokens than the cloud one."}
+    "caveat": "Avoided API spend at these rates, not profit: electricity, hardware and your time are not counted, and a local model may need more tokens than the cloud one."}
 state["traffic"]["saved"] = 33.05
 DOCTOR = {"checks": [
     {"id": "enabled", "level": "ok", "title": "Plugin enabled for this profile", "detail": "", "fix": None},

@@ -107,3 +107,40 @@ def test_savings_baseline_is_recorded_not_guessed(hermes, capsys):  # noqa: F811
     assert engine.snapshot()["traffic"]["breakdown"]["baseline"]["model"] == "anthropic/claude-sonnet-4.5"
     cli.main(p.parse_args(["price", "1", "2"]))                  # no --model: the cloud backup, said so
     assert store.read_settings()["price_model"] == "openrouter/anthropic/claude-sonnet-4"
+
+
+def test_cloud_price_is_looked_up_when_none_is_set(hermes, monkeypatch, capsys):  # noqa: F811
+    from local_fleet import pricing
+    calls = []
+
+    def fake(provider, model):
+        calls.append((provider, model))
+        return {"in": 10.0, "out": 50.0, "currency": "USD", "model": f"openai/{model}", "source": "Hermes rate card (test)",
+                "url": "https://example.invalid", "note": "subscription; API list prices", "at": "2026-11-06T09:00:00+00:00"}
+    monkeypatch.setattr(pricing, "lookup", fake)
+    store.write_setting("cloud_provider", "openai-codex")
+    store.write_setting("cloud_model", "gpt-6-astra")
+    store.write_setting("currency", "GBP")
+    engine.refresh_price(store.read_settings())
+    engine.refresh_price(store.read_settings())            # cached: not looked up again within a day
+    assert calls == [("openai-codex", "gpt-6-astra")]
+    s = engine.snapshot()
+    b = s["traffic"]["breakdown"]
+    assert b["price_in_per_m"] == 10.0 and b["baseline"]["model"] == "openai/gpt-6-astra"
+    assert "looked up" in b["baseline"]["rates"] and s["currency"] == "USD"   # the rate card's currency, not GBP
+    import argparse
+    p = argparse.ArgumentParser()
+    cli.setup_argparse(p)
+    cli.main(p.parse_args(["price", "3", "15", "--model", "x/y"]))   # your own prices win
+    assert engine.snapshot()["traffic"]["breakdown"]["price_in_per_m"] == 3.0
+    capsys.readouterr()
+    cli.main(p.parse_args(["price", "--auto"]))                     # and --auto hands back to the rate card
+    assert "$10.00 in / $50.00 out" in capsys.readouterr().out
+    assert engine.snapshot()["traffic"]["breakdown"]["price_in_per_m"] == 10.0
+
+
+def test_price_lookup_outside_hermes_is_none_and_says_so(hermes):  # noqa: F811
+    from local_fleet import pricing
+    assert pricing.lookup("openai", "gpt-6-astra") is None          # no agent package in unit tests
+    eff = pricing.effective(store.read_settings(), None)
+    assert eff["in"] == 0 and "no price" in eff["baseline"]["source"]

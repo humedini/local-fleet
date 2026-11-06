@@ -4,7 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from . import aux, config_write, events, private, readiness, store, traffic
+from . import aux, config_write, events, pricing, private, readiness, store, traffic
 from .warm import warm
 from .fleet import now_iso
 from .bench import bench_node
@@ -88,6 +88,7 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
         pass  # readiness is evidence for display and routing; a failed check leaves it unknown
     if auto_bench:
         run_bench(f, results, settings, _due_for_bench(f, settings))
+    refresh_price(settings)
     stamp = now_iso()
     with store.transaction():
         state = store.load_state()
@@ -105,6 +106,21 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
 
 _AUX_OWNED = ("provider", "model", "base_url", "fallback_chain")
 _AUX_CREDENTIALS = ("api_key", "key_env", "api_key_env")
+
+
+def refresh_price(settings: dict, force: bool = False) -> dict | None:
+    """Look up the cloud backup's rates in Hermes's rate card when no price is set by hand (at most daily)."""
+    if float(settings.get("price_in_per_m") or 0) or float(settings.get("price_out_per_m") or 0):
+        return None
+    cp, cm = settings.get("cloud_provider") or "", settings.get("cloud_model") or ""
+    if not (cp and cm):
+        return None
+    cached = store.load_state().get("auto_price")
+    if not force and not pricing.due(cached, cp, cm):
+        return cached.get("price")
+    hit = pricing.lookup(cp, cm)
+    store.update_state(auto_price={"for": f"{cp}/{cm}", "at": now_iso(), "price": hit})
+    return hit
 
 
 def _aux_drift(applied: dict) -> list[str]:
@@ -569,9 +585,8 @@ def snapshot() -> dict:
         label = "off"
     healthy = [n for n in f.enabled() if (n.get("last_health") or {}).get("status") in ("ok", "degraded")]
     primary = {k: v for k, v in config_write.current_primary().items() if k != "key_env"}
-    stats = traffic.summarize(traffic.load(), (float(settings.get("price_in_per_m") or 0),
-                                               float(settings.get("price_out_per_m") or 0)),
-                              baseline=settings.get("price_model") or "")
+    eff = pricing.effective(settings, state.get("auto_price"))
+    stats = traffic.summarize(traffic.load(), (eff["in"], eff["out"]), baseline=eff["baseline"])
     return {
         "mode": settings["mode"],
         "label": label,
@@ -586,7 +601,7 @@ def snapshot() -> dict:
         "last_probe_at": state.get("last_probe_at"),
         "series": state.get("series") or {},
         "traffic": stats,
-        "currency": settings.get("currency") or "USD",
+        "currency": eff["currency"],
         "aux": state.get("aux_applied"),
         "keep_loaded": bool(settings.get("keep_loaded")),
         "hide_addresses": bool(settings.get("hide_addresses")),
