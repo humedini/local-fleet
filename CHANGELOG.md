@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Works with Hermes 0.23.0 (The Hearth Release). CI now runs Hermes's `plugins validate` and `plugins doctor` against 0.22.7 and 0.23.0; no code changes were needed.
+- Disclosed the one undocumented Hermes import (`agent.usage_pricing.get_pricing_entry`, flagged by validate under catalog rule 9) in the README and the catalog listing. It is guarded: if it moves, savings shows "unavailable" and `hermes fleet price` still works.
+
 ## 0.3.0 (2026-11-06)
 
 - Guided demo on the Local Fleet page: about 80 seconds through why, a rehearsed outage to cloud and back, drift, readiness, savings and the doctor, on the real panels, with simulation labels, Pause, Skip, Exit and Esc.

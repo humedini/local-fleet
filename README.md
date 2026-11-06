@@ -333,6 +333,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - Load for Ollama boxes counts models in memory; it cannot see other GPU work (training jobs). Speeds are snapshots.
 - Clusters are shown and routed, not created; the interconnect label is what you declare.
 - On Windows the file lock only covers threads of one process.
+- Hermes 0.23.0's Webapp (Desktop in a browser tab, off by default) also loads Desktop plugins. The Local Fleet page has not been tried there yet; if the browser blocks clipboard access over plain HTTP, the copy buttons fall back to a text panel.
 
 ## Not in scope
 
@@ -357,7 +358,7 @@ hermes plugins enable local-fleet && hermes fleet setup
 
 Catalog storyboard (three frames of the invented fleet: local, a simulated cloud hop, recovered, stamped with version and commit): `scripts/screenshots/storyboard.sh`, which writes `docs/img/storyboard-*.png`. The README images come from `scripts/screenshots/shoot.sh`. Neither reads a real fleet.
 
-Tested with Hermes 0.22.7 on Linux against a GB10 box (ASUS Ascent GX10), an AMD Strix Halo laptop and an Apple silicon Mac, all running Ollama.
+Tested with Hermes 0.22.7 and 0.23.0 (CI runs Hermes's own `plugins validate` and `plugins doctor` against both) on Linux against a GB10 box (ASUS Ascent GX10), an AMD Strix Halo laptop and an Apple silicon Mac, all running Ollama.
 
 ## Licence
 
