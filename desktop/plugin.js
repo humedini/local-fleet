@@ -78,7 +78,8 @@ const CSS = `
 .hs-stat-btn span{font-size:12px;color:var(--ui-text-tertiary)}
 .hs-drift{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;border:1px solid var(--ui-orange,#df6500);border-radius:8px;font-size:12px;background:color-mix(in srgb,var(--ui-orange,#df6500) 8%,transparent)}
 .hs-drift>div{flex:1;min-width:240px}
-.hs-drawer-wrap{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.35);display:flex;justify-content:flex-end}
+/* Below the window's title bar (its controls and drag region sit above the page), as Desktop's own find bar does. */
+.hs-drawer-wrap{position:fixed;inset:var(--titlebar-height,34px) 0 0 0;z-index:60;background:rgba(0,0,0,.35);display:flex;justify-content:flex-end}
 .hs-drawer{width:min(620px,92vw);height:100%;overflow-y:auto;background:var(--ui-bg-elevated,#1b1b20);border-left:1px solid var(--ui-stroke-secondary);box-shadow:-20px 0 50px rgba(0,0,0,.4)}
 .hs-drawer-head{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ui-stroke-tertiary);background:inherit;font-size:15px}
 .hs-drawer-body{padding:14px 18px 24px;font-size:12.5px;display:flex;flex-direction:column;gap:12px}
