@@ -103,6 +103,60 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     return settings, f, results
 
 
+def _aux_drift(applied: dict) -> list[str]:
+    """Side tasks whose block no longer points where Local Fleet put them."""
+    node = store.fleet().find(applied.get("node_id") or "")
+    aux_cfg = config_write._load().get("auxiliary") or {}
+    out = []
+    for t in applied.get("tasks") or []:
+        b = aux_cfg.get(t) or {}
+        if node is None or b.get("base_url") != node["base_url"] or b.get("model") != applied.get("model"):
+            out.append(t)
+    return out
+
+
+def drift(state: dict | None = None) -> list[dict]:
+    """What Local Fleet wrote that is no longer in Hermes's config: [{"what", "detail"}]."""
+    state = state if state is not None else store.load_state()
+    out = []
+    if state.get("paused"):
+        out.append({"what": "primary", "detail": "the primary model was changed outside Local Fleet; routing is paused"})
+    entry = state.get("fallback_ensured")
+    if entry and not config_write.has_fallback(config_write.fallback_chain(), entry.get("provider"), entry.get("model")):
+        out.append({"what": "fallback", "detail": f"your cloud entry {entry['provider']}/{entry['model']} was removed from fallback_providers"})
+    if state.get("aux_applied"):
+        changed = _aux_drift(state["aux_applied"])
+        if changed or state.get("aux_paused"):
+            out.append({"what": "side tasks", "detail": f"{', '.join(changed) or 'side tasks'} changed outside Local Fleet"})
+    return out
+
+
+def reapply() -> dict:
+    """Take routing back after drift: primary (auto-pick), cloud entry, side tasks."""
+    with store.transaction():
+        state = store.load_state()
+        for k in ("paused", "aux_paused", "fallback_ensured"):
+            state.pop(k, None)
+        if state.get("aux_applied"):
+            state["aux_applied"] = None  # re-applied fresh below
+        store.save_state(state)
+    events.record("drift", "reapplied Local Fleet's routing")
+    return apply_policy(unpin=True)
+
+
+def relinquish() -> str:
+    """Stop managing Hermes's routing, leaving the config exactly as it is now."""
+    with store.transaction():
+        state = store.load_state()
+        state.update({"applied": None, "paused": True, "aux_applied": None, "fallback_ensured": None})
+        state.pop("aux_paused", None)
+        state.pop("original_model", None)
+        store.save_state(state)
+    store.write_setting("aux_tasks", [])
+    events.record("drift", "relinquished: Local Fleet stopped managing routing; config left as it is")
+    return "Local Fleet no longer manages routing; Hermes's config is untouched. Auto-pick box takes it back."
+
+
 def active_exclusions(state: dict) -> dict:
     """Boxes left out of selection: maintenance (until turned off) and rehearsals (until they
     expire; an expired one is dropped from `state` and recorded)."""
@@ -197,7 +251,13 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                 state["applied"].pop("pinned", None)
         if not dry_run and _cloud_ready({"provider": settings.get("cloud_provider"),
                                          "model": settings.get("cloud_model")}):
-            decision["fallback_added"] = config_write.ensure_fallback(settings["cloud_provider"], settings["cloud_model"])
+            entry = {"provider": settings["cloud_provider"], "model": settings["cloud_model"]}
+            if state.get("fallback_ensured") == entry and not config_write.has_fallback(
+                    config_write.fallback_chain(), entry["provider"], entry["model"]):
+                pass  # removed by someone else since we added it: drift, never silently re-added
+            else:
+                decision["fallback_added"] = config_write.ensure_fallback(entry["provider"], entry["model"])
+                state["fallback_ensured"] = entry
         if not dry_run:
             decision["keep"] = _keep_loaded(settings, f, results, applied_now, state.get("applied") or {})
         if not dry_run or aux_follow:  # side tasks are their own opt-in, independent of main routing
@@ -229,8 +289,12 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     blocks back when no box is healthy. Writes only when the target changes. Updates `state`."""
     tasks = list(settings.get("aux_tasks") or [])
     current = state.get("aux_applied")
-    if not tasks:
+    if not tasks or state.get("aux_paused"):
         return None
+    if current and _aux_drift(current):
+        state["aux_paused"] = True
+        events.record("drift", "side-task settings were changed outside Local Fleet; it stopped moving them")
+        return "side tasks changed outside Local Fleet: paused (reapply or relinquish)"
     # A task holding a literal api_key is the user's own secret: leave it alone, so the key is never
     # copied into Local Fleet's state (aux_original) and never travels to another host.
     aux_cfg = (config_write._load().get("auxiliary") or {})
@@ -410,6 +474,7 @@ def snapshot() -> dict:
         "paused": bool(state.get("paused")),
         "exclusions": {k: v for k, v in (state.get("exclusions") or {}).items()},
         "events": events.timeline(40),
+        "drift": drift(state),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],
         "history": state.get("history") or [],

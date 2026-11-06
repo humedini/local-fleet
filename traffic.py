@@ -132,7 +132,16 @@ def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: 
     now = now or time.time()
     boxes: dict[str, dict] = {}
     local_in = local_out = cloud_in = cloud_out = 0
+    calls_local = calls_local_counted = aux_in = aux_out = 0
+    first_t = min((ln.get("t", now) for ln in lines), default=None)
     for ln in lines:
+        if ln.get("n"):
+            calls_local += 1
+            if ln.get("in") or ln.get("out"):
+                calls_local_counted += 1
+            if ln.get("aux"):
+                aux_in += ln.get("in", 0)
+                aux_out += ln.get("out", 0)
         nid = ln.get("n")
         if nid:
             b = boxes.setdefault(nid, {"calls": 0, "errors": 0, "in": 0, "out": 0, "live": 0, "_tps": [], "_lat": []})
@@ -159,4 +168,17 @@ def summarize(lines: list[dict], prices: tuple[float, float] = (0.0, 0.0), now: 
     total = local_in + local_out + cloud_in + cloud_out
     return {"boxes": boxes, "local_tokens": local_in + local_out, "cloud_tokens": cloud_in + cloud_out,
             "local_share": round((local_in + local_out) / total, 3) if total else None,
-            "saved": round(saved, 2) if saved is not None else None, "calls": len(lines)}
+            "saved": round(saved, 2) if saved is not None else None, "calls": len(lines),
+            # The audit trail behind `saved`: what was counted, at what rates, and what is missing.
+            "breakdown": {
+                "local_in": local_in, "local_out": local_out, "aux_in": aux_in, "aux_out": aux_out,
+                "main_in": local_in - aux_in, "main_out": local_out - aux_out,
+                "price_in_per_m": price_in, "price_out_per_m": price_out,
+                "saved_in": round(local_in * price_in / 1e6, 4), "saved_out": round(local_out * price_out / 1e6, 4),
+                "calls_local": calls_local, "calls_local_counted": calls_local_counted,
+                "coverage": round(calls_local_counted / calls_local, 3) if calls_local else None,
+                "since": first_t,
+                "excluded": "cloud calls (they cost what they cost); local calls that reported no token counts",
+                "caveat": "Avoided API spend at the rates you entered, not profit: electricity, hardware and "
+                          "your time are not counted, and a local model may need more tokens than the cloud one.",
+            }}

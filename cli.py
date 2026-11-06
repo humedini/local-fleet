@@ -84,6 +84,10 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("maintenance", help="Leave a box out of new selections (running requests finish)")
     p.add_argument("node")
     p.add_argument("action", choices=("on", "off"))
+    p = sub.add_parser("drift", help="Show what changed outside Local Fleet; --reapply takes it back, --relinquish stops managing")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--reapply", action="store_true")
+    g.add_argument("--relinquish", action="store_true")
     sub.add_parser("readiness", help="Can each box run Hermes on your models? Tools, vision, context, with evidence")
     sub.add_parser("stats", help="Real traffic per box this week: calls, tok/s, latency, local share, spend avoided")
     p = sub.add_parser("price", help="Cloud price per million tokens, for the spend-avoided figure")
@@ -206,7 +210,17 @@ def stats_text() -> str:
     share = f"{t['local_share'] * 100:.0f}%" if t["local_share"] is not None else "-"
     lines.append(f"\nlocal tokens {t['local_tokens']:,} · cloud tokens {t['cloud_tokens']:,} · local share {share}")
     if t["saved"] is not None:
-        lines.append(f"spend avoided this week: {store.format_money(t['saved'], s['currency'])}")
+        b = t["breakdown"]
+        cov = f"{b['coverage'] * 100:.0f}%" if b["coverage"] is not None else "-"
+        lines.append(f"spend avoided this week: {store.format_money(t['saved'], s['currency'])}"
+                     f"  (vs {s.get('cloud_provider')}/{s.get('cloud_model') or '?'} at "
+                     f"{store.format_money(b['price_in_per_m'], s['currency'])} in / {store.format_money(b['price_out_per_m'], s['currency'])} out per million)")
+        lines.append(f"  input {b['local_in']:,} tokens = {store.format_money(b['saved_in'], s['currency'])} · "
+                     f"output {b['local_out']:,} = {store.format_money(b['saved_out'], s['currency'])} · "
+                     f"side tasks {b['aux_in'] + b['aux_out']:,} of those")
+        lines.append(f"  coverage: {b['calls_local_counted']} of {b['calls_local']} local calls reported token counts ({cov})")
+        lines.append(f"  not counted: {b['excluded']}")
+        lines.append(f"  {b['caveat']}")
     else:
         lines.append("spend avoided: set a cloud price with hermes fleet price <in> <out> [--currency GBP]")
     lines.append("(tok/s here is effective: real calls including prompt processing; hermes fleet bench gives decode speed)")
@@ -390,6 +404,15 @@ def _dispatch(cmd: str, args) -> int:
             d = engine.exclude(args.node, "rehearsal" if cmd == "rehearse" else "maintenance",
                                args.minutes if cmd == "rehearse" else None)
         print(render.decision_text(d))
+        return 0
+    if cmd == "drift":
+        if args.reapply:
+            print(render.decision_text(engine.reapply()))
+        elif args.relinquish:
+            print(engine.relinquish())
+        else:
+            items = engine.drift()
+            print("\n".join(f"  {d['what']}: {d['detail']}" for d in items) if items else "no drift: Hermes's config is as Local Fleet left it")
         return 0
     if cmd == "readiness":
         settings, f, _ = engine.probe()

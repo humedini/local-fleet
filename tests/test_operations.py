@@ -89,3 +89,60 @@ def test_flight_recorder_separates_configured_and_served(hermes):  # noqa: F811
     assert "route" in kinds and kinds.count("served") == 2
     assert tl[-1]["text"].startswith("served by cloud · openrouter")
     assert json.dumps(tl)
+
+
+@respx.mock
+def test_drift_is_detected_never_fought_and_resolvable(hermes):  # noqa: F811
+    boxes()
+    engine.apply_policy()
+    assert hermes.cfg["fallback_providers"]
+    hermes.cfg["fallback_providers"] = []                    # another plugin removes our cloud entry
+    engine.apply_policy()
+    assert hermes.cfg["fallback_providers"] == []            # not silently re-added
+    assert [d["what"] for d in engine.drift()] == ["fallback"]
+    engine.reapply()
+    assert hermes.cfg["fallback_providers"] and not engine.drift()
+    hermes.cfg["model"] = {"provider": "anthropic", "default": "x"}
+    engine.apply_policy()
+    assert "primary" in [d["what"] for d in engine.drift()]
+    engine.relinquish()
+    assert hermes.cfg["model"] == {"provider": "anthropic", "default": "x"}
+    assert engine.apply_policy()["applied"] is False         # stays hands-off
+
+
+@respx.mock
+def test_side_task_drift_pauses_following(hermes):  # noqa: F811
+    store.write_setting("aux_tasks", ["compression"])
+    boxes()
+    engine.apply_policy(dry_run=True, aux_follow=True)
+    hermes.cfg["auxiliary"]["compression"]["base_url"] = "http://elsewhere:1/v1"
+    d = engine.apply_policy(dry_run=True, aux_follow=True)
+    assert "paused" in d["aux"] and hermes.cfg["auxiliary"]["compression"]["base_url"] == "http://elsewhere:1/v1"
+    assert "side tasks" in [x["what"] for x in engine.drift()]
+
+
+def test_savings_breakdown_is_auditable():
+    lines = [{"t": 1, "n": "a", "in": 1000, "out": 500, "ok": 1, "d": 1},
+             {"t": 2, "n": "a", "in": 0, "out": 0, "ok": 1, "d": 1},             # no usage reported
+             {"t": 3, "n": "a", "in": 200, "out": 100, "ok": 1, "d": 1, "aux": "compression"},
+             {"t": 4, "n": None, "p": "openrouter", "in": 999, "out": 999, "ok": 1, "d": 1}]
+    t = traffic.summarize(lines, (3.0, 15.0), now=5)
+    b = t["breakdown"]
+    assert b["local_in"] == 1200 and b["local_out"] == 600 and b["aux_in"] == 200
+    assert b["calls_local"] == 3 and b["calls_local_counted"] == 2 and b["coverage"] == round(2 / 3, 3)
+    assert t["saved"] == round(b["saved_in"] + b["saved_out"], 2)
+    assert "not profit" in b["caveat"]
+
+
+@respx.mock
+def test_doctor_checks_have_fixes(hermes):  # noqa: F811
+    from local_fleet import doctor
+    boxes(gx=False)
+    store.write_setting("cloud_model", "")
+    items = doctor.checks()
+    by = {c["id"].split(":")[0]: c for c in items}
+    assert by["down"]["level"] == "error" and by["down"]["fix"]["action"] == "probe"
+    assert by["cloud"]["fix"]["command"].startswith("hermes fleet cloud")
+    assert by["routing"]["fix"]["action"] == "use"
+    ok, lines = doctor.run()
+    assert not ok and any("fix:" in l for l in lines)
