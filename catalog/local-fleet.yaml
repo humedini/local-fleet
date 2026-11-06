@@ -2,7 +2,7 @@
 # NousResearch/hermes-agent's plugin-catalog/ once the repo is public.
 name: local-fleet
 repo: https://github.com/humedini/local-fleet
-sha: 77a426e37ad32e8b7ec4ada0887d845c71339f11
+sha: 9788c4573a39c28b063e540f0f967364f667b155
 title: Local Fleet
 description: 'Your local inference fleet, operated from Hermes Desktop: routing across your own boxes (DGX Spark /
   GB10, Ollama, vLLM, LiteLLM, clusters behind one endpoint). Probes each box, makes the least busy healthy one the
@@ -22,10 +22,13 @@ version: "0.3.0"
 requires_hermes: ">=0.22"
 docs_url: https://github.com/humedini/local-fleet#readme
 readme: true
-image: https://raw.githubusercontent.com/humedini/local-fleet/77a426e37ad32e8b7ec4ada0887d845c71339f11/docs/img/fleet-page.png
+image: https://raw.githubusercontent.com/humedini/local-fleet/9788c4573a39c28b063e540f0f967364f667b155/docs/img/fleet-page.png
 screenshots:
-  - https://raw.githubusercontent.com/humedini/local-fleet/77a426e37ad32e8b7ec4ada0887d845c71339f11/docs/img/fleet-map.gif
-  - https://raw.githubusercontent.com/humedini/local-fleet/77a426e37ad32e8b7ec4ada0887d845c71339f11/docs/img/fleet-chip.png
+  - https://raw.githubusercontent.com/humedini/local-fleet/9788c4573a39c28b063e540f0f967364f667b155/docs/img/fleet-map.gif
+  - https://raw.githubusercontent.com/humedini/local-fleet/9788c4573a39c28b063e540f0f967364f667b155/docs/img/fleet-chip.png
+  - https://raw.githubusercontent.com/humedini/local-fleet/9788c4573a39c28b063e540f0f967364f667b155/docs/img/storyboard-1-local.png
+  - https://raw.githubusercontent.com/humedini/local-fleet/9788c4573a39c28b063e540f0f967364f667b155/docs/img/storyboard-2-cloud.png
+  - https://raw.githubusercontent.com/humedini/local-fleet/9788c4573a39c28b063e540f0f967364f667b155/docs/img/storyboard-3-recover.png
 platforms: []
 capabilities:
   provides_tools: [fleet_status, fleet_list_nodes, fleet_pull_model]
