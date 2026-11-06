@@ -6,7 +6,7 @@ import json
 import sys
 import time
 
-from . import config_write, doctor, engine, store
+from . import config_write, doctor, engine, render, store
 from .aux import DEFAULT_TASKS as AUX_DEFAULT, TASKS as AUX_TASKS
 from .constants import KINDS, MODES, OSES, VENDORS
 from .fleet import FleetError, public_node
@@ -175,17 +175,10 @@ def snapshot_view(probe: bool = False) -> dict:
     nodes = [public_node(n) for n in store.fleet().nodes]
     snap["nodes"] = nodes
     if snap.get("hide_addresses"):
-        snap = _strip_addresses(snap)
+        render.HIDE["on"] = True
+        snap = render.strip_addresses(snap)
     snap["schema"] = 1
     return snap
-
-
-def _strip_addresses(v):
-    if isinstance(v, dict):
-        return {k: _strip_addresses(x) for k, x in v.items() if k != "base_url"}
-    if isinstance(v, list):
-        return [_strip_addresses(x) for x in v]
-    return v
 
 
 def stats_text() -> str:
@@ -256,7 +249,7 @@ def main(args) -> int:
     try:
         code = _dispatch(cmd, args)
     except FleetError as e:
-        print(f"✗ {e}")
+        print(f"✗ {render.redact(e)}")
         code = 1
     if code:
         raise SystemExit(code)
@@ -280,13 +273,13 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "list":
         f, applied = store.fleet(), store.load_state().get("applied") or {}
-        print(json.dumps([public_node(n) for n in f.nodes], indent=2) if args.json
+        print(json.dumps(render.strip_addresses([public_node(n) for n in f.nodes]), indent=2) if args.json
               else nodes_table(f.nodes, applied.get("node_id", "")))
         return 0
     if cmd == "status":
         d = engine.apply_policy(dry_run=True)
         if args.json:
-            print(json.dumps({"decision": d, "nodes": [public_node(n) for n in store.fleet().nodes]}, indent=2))
+            print(json.dumps(render.strip_addresses({"decision": d, "nodes": [public_node(n) for n in store.fleet().nodes]}), indent=2))
         else:
             text = status_text(store.fleet().nodes, d, _active_id())
             if d["changed"]:

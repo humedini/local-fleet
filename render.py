@@ -1,5 +1,9 @@
-"""Plain-text views shared by the CLI and `/fleet` (they return text; nothing here prints)."""
+"""Plain-text views shared by the CLI and `/fleet` (they return text; nothing here prints).
+Everything that can show an address goes through `_url`, `redact` or `strip_addresses`, which honour
+the privacy setting (HIDE, set by the CLI and /fleet from `hide_addresses`)."""
 from __future__ import annotations
+
+import re
 
 
 def _load(h: dict, perf: dict | None = None) -> str:
@@ -16,6 +20,25 @@ def _load(h: dict, perf: dict | None = None) -> str:
 
 
 HIDE = {"on": False}  # set by the CLI from the hide_addresses setting
+
+
+_ADDR = re.compile(r"(?:https?://|\b)(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?[^\s'\"]*|https?://[^\s'\"]+|\b[\w-]+(?:\.[\w-]+)*\.ts\.net(?::\d+)?[^\s'\"]*")
+
+
+def redact(text: str) -> str:
+    """With privacy on, any URL, IP address or tailnet name in `text` becomes <address>."""
+    return _ADDR.sub("<address>", str(text)) if HIDE["on"] else str(text)
+
+
+def strip_addresses(v):
+    """With privacy on, drop every base_url and redact addresses in strings, recursively."""
+    if not HIDE["on"]:
+        return v
+    if isinstance(v, dict):
+        return {k: strip_addresses(x) for k, x in v.items() if k != "base_url"}
+    if isinstance(v, list):
+        return [strip_addresses(x) for x in v]
+    return redact(v) if isinstance(v, str) else v
 
 
 def _url(node: dict) -> str:

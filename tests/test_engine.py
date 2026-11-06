@@ -225,3 +225,28 @@ def test_snapshot_export_is_complete_and_honours_privacy(hermes, capsys):
     cli.main(p.parse_args(["snapshot"]))
     out = capsys.readouterr().out
     assert "http://" not in out
+
+
+@respx.mock
+def test_privacy_covers_errors_and_json_outputs(hermes, capsys):
+    import argparse
+    from local_fleet import render
+    boxes()
+    store.write_setting("hide_addresses", True)
+    p = argparse.ArgumentParser()
+    cli.setup_argparse(p)
+    try:
+        cli.main(p.parse_args(["add", "--name", "dup", "--url", "http://gx:11434/v1"]))   # duplicate address
+    except SystemExit:
+        pass
+    try:
+        cli.main(p.parse_args(["add", "--name", "bad", "--url", "ftp://10.1.2.3/x"]))     # invalid address
+    except SystemExit:
+        pass
+    cli.main(p.parse_args(["list", "--json"]))
+    cli.main(p.parse_args(["status", "--json"]))
+    out = capsys.readouterr().out
+    assert "already registered as" in out and "<address>" in out
+    for leak in ("http://", "gx:11434", "10.1.2.3"):
+        assert leak not in out, leak
+    render.HIDE["on"] = False

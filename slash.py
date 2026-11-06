@@ -38,5 +38,5 @@ def handle(raw_args: str = "", **kwargs) -> str:
         if cmd == "doctor":
             return "\n".join(doctor.run()[1])
     except FleetError as e:
-        return f"✗ {e}"
+        return f"✗ {render.redact(e)}"
     return HELP

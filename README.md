@@ -242,9 +242,13 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 
 ## How it differs
 
-- **A standalone plugin, not a core change.** An earlier in-tree `hermes dgx` proposal (hermes-agent PR #28009) was closed in favour of plugins; Local Fleet ships as one.
-- **Hermes keeps its own fallback chain.** Local Fleet chooses the primary between turns; core `fallback_providers` still handles a failure within a turn. No second fallback engine.
-- **A live fleet, not a skin.** Health, load, memory and speed per box, routing that acts on them, and a Desktop page that shows it. (The optional DGX Spark theme is a bonus; themed skins already exist elsewhere.)
+**Your local inference fleet, operated from Hermes Desktop.** Not the first tool to pool local inference boxes, and not a better load balancer:
+
+- **Closest peer: [Ollama Herd](https://github.com/geeks-accelerator/ollama-herd)**, which pools Ollama machines behind one endpoint. Choose Local Fleet when you live in Hermes: it routes Hermes itself, shows the fleet in Hermes Desktop, and explains every routing decision there.
+- **Hermes keeps its own fallback chain.** Local Fleet chooses the primary between turns; core `fallback_providers` still handles a failure within a turn, and switching back is not unique to Local Fleet. No second fallback engine.
+- **Not a proxy or load balancer.** For request-level balancing use LiteLLM (or Herd); Local Fleet can route to a LiteLLM gateway as one box.
+- **A standalone plugin.** An in-tree `hermes dgx` proposal (hermes-agent PR #28009) was closed in favour of plugins; Local Fleet is that shape.
+- **Not mixture-of-agents.** Plugins such as hermes-local-moa combine models for quality; Local Fleet picks where the one model runs.
 
 ## Known limitations (v0.1.0)
 

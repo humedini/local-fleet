@@ -157,7 +157,7 @@ def test_keep_loaded_holds_the_routed_model_and_releases_it(hermes):  # noqa: F8
 
 @respx.mock
 def test_side_tasks_never_carry_credentials_across_hosts(hermes):  # noqa: F811
-    hermes.cfg["auxiliary"] = {"compression": {"provider": "openrouter", "model": "cheap", "api_key": "sk-old",
+    hermes.cfg["auxiliary"] = {"compression": {"provider": "openrouter", "model": "cheap", "key_env": "OLD_KEY",
                                                "api_mode": "chat_completions", "timeout": 60}}
     f = store.fleet()
     with f._txn():
@@ -167,7 +167,25 @@ def test_side_tasks_never_carry_credentials_across_hosts(hermes):  # noqa: F811
     engine.apply_policy(dry_run=True, aux_follow=True)
     comp = hermes.cfg["auxiliary"]["compression"]
     assert comp["base_url"] == "http://s2:11434/v1"
-    assert "api_key" not in comp and "api_mode" not in comp and comp["timeout"] == 60
+    assert "key_env" not in comp and "api_mode" not in comp and comp["timeout"] == 60
     engine.aux_off()
-    assert hermes.cfg["auxiliary"]["compression"] == {"provider": "openrouter", "model": "cheap", "api_key": "sk-old",
+    assert hermes.cfg["auxiliary"]["compression"] == {"provider": "openrouter", "model": "cheap", "key_env": "OLD_KEY",
                                                       "api_mode": "chat_completions", "timeout": 60}
+
+
+@respx.mock
+def test_side_tasks_never_take_over_a_task_holding_a_literal_key(hermes):  # noqa: F811
+    """A literal api_key in an auxiliary block is the user's secret: Local Fleet leaves that task alone,
+    so the key is never copied into the plugin's own files."""
+    hermes.cfg["auxiliary"] = {"compression": {"provider": "openrouter", "model": "cheap", "api_key": "sk-SECRET-123"},
+                               "title_generation": {"provider": "openrouter", "model": "cheap"}}
+    store.write_setting("aux_tasks", ["title_generation", "compression"])
+    boxes()
+    d = engine.apply_policy(dry_run=True, aux_follow=True)
+    assert hermes.cfg["auxiliary"]["compression"]["api_key"] == "sk-SECRET-123"            # untouched
+    assert "base_url" not in hermes.cfg["auxiliary"]["compression"]
+    assert hermes.cfg["auxiliary"]["title_generation"]["base_url"] == "http://gx:11434/v1"  # the other task moved
+    assert "compression" in (d.get("aux") or "")                                             # and it says why
+    for f in store.data_dir().rglob("*"):
+        if f.is_file():
+            assert "sk-SECRET-123" not in f.read_text(errors="ignore"), f

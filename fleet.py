@@ -144,7 +144,7 @@ class Fleet:
             if n["name"].lower() == name.lower():
                 raise FleetError(f"a node is already called {n['name']!r}")
             if n["base_url"].lower() == base_url.lower():
-                raise FleetError(f"{base_url} is already registered as {n['name']!r}")
+                raise FleetError(f"that address is already registered as {n['name']!r}")
         stamp = now_iso()
         node = {
             "id": uuid.uuid4().hex[:6],

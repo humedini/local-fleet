@@ -196,6 +196,14 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     current = state.get("aux_applied")
     if not tasks:
         return None
+    # A task holding a literal api_key is the user's own secret: leave it alone, so the key is never
+    # copied into Local Fleet's state (aux_original) and never travels to another host.
+    aux_cfg = (config_write._load().get("auxiliary") or {})
+    keyed = [t for t in tasks if (aux_cfg.get(t) or {}).get("api_key") and t not in ((current or {}).get("tasks") or [])]
+    tasks = [t for t in tasks if t not in keyed]
+    note = f" (left {', '.join(keyed)} alone: it has its own API key)" if keyed else ""
+    if not tasks:
+        return f"side tasks: none moved{note}" if keyed else None
     # Least busy healthy box that needs no key (auxiliary blocks cannot name a key's env var).
     want_model = decision.get("tier_model") or ""
     keyless = [n for n in f.enabled() if not n.get("api_key_env") and routable(n, results.get(n["id"]), want_model)]
@@ -210,14 +218,14 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     model = model_for(node, results.get(node["id"]) or {}, decision.get("tier_model") or "")
     want = {"tasks": tasks, "node_id": node["id"], "node_name": node["name"], "model": model}
     if current == want:
-        return None
+        return f"side tasks unchanged{note}" if keyed else None
     before = aux.apply(tasks, aux.block(node, model, settings.get("cloud_provider"), settings.get("cloud_model")), None)
     original = state.get("aux_original") or {}
     for t in tasks:
         original.setdefault(t, before.get(t, {}))
     state["aux_original"] = original
     state["aux_applied"] = want
-    return f"side tasks → {node['name']} · {model}"
+    return f"side tasks → {node['name']} · {model}{note}"
 
 
 FOREVER = -1     # Ollama keep_alive: never unload (a number: "-1" as text is rejected, it has no unit)
