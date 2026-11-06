@@ -120,15 +120,19 @@ for n in nodes:
     n["caps"] = caps
 state["model_tiers"] = [BIG, MAIN, FALLBACK]
 state["min_context"] = 32768
+state["probe_interval_s"] = 30
+state["private_only"] = False
+state["private"] = {"on": False, "in_force": False, "problems": [], "scope": ""}
+state["watch_at"] = iso(0.3)
 state["exclusions"] = {"d00004": {"kind": "rehearsal", "until": (NOW + timedelta(minutes=8)).isoformat(), "since": iso(2), "label": "strix"}}
 state["last_decision"].update({"mode": "auto", "tier": 0, "tier_model": BIG, "pinned": False, "at": iso(1),
     "target": {"kind": "local", "node_id": "d00009", "node_name": "spark-pair", "model": BIG},
     "candidates": [
-        {"id": "d00009", "name": "spark-pair", "title": "Spark pair", "eligible": True, "reason": "ok", "load": 0.35, "latency_ms": 6, "free_bytes": None, "tps": 14.2, "chosen": True, "least_busy": True, "score": [0.35, 0, -14.2, 0]},
-        {"id": "d00001", "name": "spark-a", "title": "Spark A", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.35, "latency_ms": 4},
-        {"id": "d00002", "name": "spark-b", "title": "Spark B", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.44, "latency_ms": 5},
-        {"id": "d00003", "name": "studio", "title": "Mac Studio", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.0, "latency_ms": 9},
-        {"id": "d00004", "name": "strix", "eligible": False, "reason": "simulated outage (rehearsal) until 14:38", "load": 0.25, "latency_ms": 7}]})
+        {"id": "d00009", "checked_at": iso(0.2), "name": "spark-pair", "title": "Spark pair", "eligible": True, "reason": "ok", "load": 0.35, "latency_ms": 6, "free_bytes": None, "tps": 14.2, "chosen": True, "least_busy": True, "score": [0.35, 0, -14.2, 0]},
+        {"id": "d00001", "checked_at": iso(0.2), "name": "spark-a", "title": "Spark A", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.35, "latency_ms": 4},
+        {"id": "d00002", "checked_at": iso(0.2), "name": "spark-b", "title": "Spark B", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.44, "latency_ms": 5},
+        {"id": "d00003", "checked_at": iso(0.2), "name": "studio", "title": "Mac Studio", "eligible": False, "reason": "does not have llama3.1:405b", "load": 0.0, "latency_ms": 9},
+        {"id": "d00004", "checked_at": iso(0.2), "name": "strix", "eligible": False, "reason": "simulated outage (rehearsal) until 14:38", "load": 0.25, "latency_ms": 7}]})
 state["events"] = [
     {"t": (NOW - timedelta(minutes=185)).timestamp(), "kind": "route", "text": "spark-b · gpt-oss:120b", "reason": "least busy box: spark-b"},
     {"t": (NOW - timedelta(minutes=123)).timestamp(), "kind": "health", "text": "Spark B went down: timeout"},
@@ -143,6 +147,7 @@ state["events"] = [
 state["drift"] = []
 state["traffic"]["breakdown"] = {"local_in": 7_150_000, "local_out": 773_000, "aux_in": 410_000, "aux_out": 38_000,
     "price_in_per_m": 3.0, "price_out_per_m": 15.0, "saved_in": 21.45, "saved_out": 11.6,
+    "baseline": {"model": "anthropic/claude-sonnet-4", "rates": "entered by you (hermes fleet price)", "source": "recorded with the prices"},
     "calls_local": 993, "calls_local_counted": 981, "coverage": 0.988, "since": NOW.timestamp() - 6.5 * 86400,
     "excluded": "cloud calls (they cost what they cost); local calls that reported no token counts",
     "caveat": "Avoided API spend at the rates you entered, not profit: electricity, hardware and your time are not counted, and a local model may need more tokens than the cloud one."}
@@ -153,7 +158,8 @@ DOCTOR = {"checks": [
      "detail": "Ollama's default context may be smaller than Hermes's system prompt (~15k tokens). Create a variant with a larger num_ctx.",
      "fix": {"command": "printf 'FROM qwen3:14b\\nPARAMETER num_ctx 32768\\n' > Modelfile && ollama create qwen3:14b-32k -f Modelfile"}},
     {"id": "excluded:d00004", "level": "info", "title": "strix: rehearsal", "detail": "Left out of new selections.", "fix": {"action": "include:d00004", "label": "Put back in selection"}},
-    {"id": "routing", "level": "ok", "title": "Routed to Spark pair · llama3.1:405b", "detail": "", "fix": None}]}
+    {"id": "routing", "level": "ok", "title": "Routed to Spark pair · llama3.1:405b", "detail": "", "fix": None},
+    {"id": "watch", "level": "ok", "title": "Watch loop running (last tick 18 s ago)", "detail": "", "fix": None}]}
 (Path(__file__).parent / "demo-doctor.json").write_text(json.dumps(DOCTOR))
 
 # The demo clock is fixed; the page compares times with the viewer's clock, so shift everything to "now".
