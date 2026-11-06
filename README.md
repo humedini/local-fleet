@@ -124,6 +124,16 @@ The Local Fleet page (and the CLI) is where you run the fleet day to day:
 - **Workload on the map.** Each box is labelled with what it is doing: chat, side tasks (titles, compression), subagents, rehearsal or maintenance.
 - **Doctor.** The *Doctor* button lists every check with a one-click fix (probe again, auto-pick, reapply, end a rehearsal) or the exact command to run. `hermes fleet doctor`. It complements `hermes doctor` and `hermes plugins doctor`.
 
+## Private inference
+
+```bash
+hermes fleet private on
+```
+
+Hermes's model calls that Local Fleet routes go only to your registered boxes. Cloud entries come off `fallback_providers` (kept and put back by `private off`), side tasks lose their cloud fallback, `where: cloud` subagents are refused, and when no box is available Local Fleet **refuses** instead of switching to cloud: the chip shows *private · no box*, the flight recorder logs it, and Hermes's calls fail until a box is back. The doctor flags any cloud entry or side task still pointing at cloud.
+
+It is not air-gapping: tools such as web search still use the internet, and model calls Local Fleet does not route (a provider you pick by hand, another plugin's own calls) are outside it.
+
 ## Subagents on the fleet
 
 ```bash
@@ -209,6 +219,7 @@ local-fleet does not replace LiteLLM; it gives you health-aware routing without 
 | `hermes fleet keep on\|off\|status` | keep the routed model in memory |
 | `hermes fleet snapshot [--probe]` | the fleet's state as JSON, for dashboards and status screens (read-only) |
 | `hermes fleet privacy on\|off` | hide box addresses in the Desktop and terminal (screen recordings) |
+| `hermes fleet private on\|off\|status` | only your boxes; refuse rather than use cloud |
 | `hermes fleet why` | the decision inspector: every box's verdict and score |
 | `hermes fleet events [-n N]` | the flight recorder |
 | `hermes fleet rehearse <box> [--minutes M] [--stop]` | simulated outage inside Local Fleet (nothing stopped) |

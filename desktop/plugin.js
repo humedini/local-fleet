@@ -288,7 +288,8 @@ function chip(s, failed) {
   const a = s.applied || {}
   if (s.down) return { tone: 'bad', text: 'fleet · all down' }
   if (s.paused) return { tone: 'warn', text: 'fleet · paused' }
-  if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name}` }
+  if (s.private_only && ((s.last_decision || {}).target || {}).kind === 'refused') return { tone: 'bad', text: 'fleet · private · no box' }
+  if (a.kind === 'local') return { tone: 'spark', text: `fleet · ${dname((s.nodes || []).find(n => n.id === a.node_id)) || a.node_name}${s.private_only ? ' · private' : ''}` }
   if (a.kind === 'cloud') return { tone: a.via === 'failover' ? 'warn' : '', text: 'fleet · cloud' }
   return { tone: '', text: `fleet · ${s.healthy}/${s.nodes.filter(n => n.enabled !== false).length} up` }
 }
@@ -1017,6 +1018,9 @@ function FleetPage({ ctx }) {
       jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': Boolean(s.aux), disabled: Boolean(busy),
         title: s.aux ? `${s.aux.tasks.join(', ')} → ${s.aux.node_name}` : 'Session titles and compression run on the least busy box, with cloud as backup',
         onClick: () => run('aux', '/aux', { on: !s.aux }), children: [jsx('i', {}), 'Side tasks on fleet'] }),
+      jsxs('button', { type: 'button', className: 'hs-toggle', role: 'switch', 'aria-checked': Boolean(s.private_only), disabled: Boolean(busy),
+        title: 'Only your boxes: cloud fallback is taken off and Local Fleet refuses rather than use cloud. Tools such as web search still use the internet.',
+        onClick: () => run('private', '/private', { on: !s.private_only }), children: [jsx('i', {}), 'Private inference'] }),
       jsx(Button, { size: 'sm', variant: 'outline', onClick: () => setDrawer({ kind: 'doctor' }), children: 'Doctor' }),
       jsx('span', { className: 'hs-page-hint', style: { marginLeft: 'auto' }, children: s.last_probe_at ? `probed ${ago(s.last_probe_at)} · refreshes every 10 s` : '' })
     ] }),

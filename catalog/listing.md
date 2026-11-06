@@ -12,6 +12,7 @@ Your local inference fleet, operated from Hermes Desktop: Hermes runs on the lea
 - Live health: up/down, latency, load from Ollama `/api/ps` or vLLM `/metrics`, free memory
 - Least-busy-box routing that does not flip-flop, with label preferences and pinning
 - Operations: why-this-box inspector, flight recorder (configured vs served), outage rehearsal, maintenance, drift detection that never fights other plugins, readiness evidence per box and model, an auditable savings breakdown, doctor with one-click fixes
+- Private inference: only your boxes, refuse rather than use cloud (not air-gapping)
 - Modes: prefer-local, prefer-cloud, auto
 - Failover to your cloud model when every box is down, **failback** when one recovers
 - Works with core `fallback_providers` instead of replacing it; `restore` puts your original primary model back (`aux off`, `delegate off` and `keep off` undo the optional features)

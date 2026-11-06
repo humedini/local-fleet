@@ -44,7 +44,10 @@ def _next_index() -> int:
 def route(task: dict, settings: dict, nodes: list[dict], secret=None, excluded: dict | None = None) -> dict:
     """The route for one task (pure apart from the fan-out counter)."""
     where = task.get("where") or "any"
+    private = bool(settings.get("private_only"))
     if where == "cloud":
+        if private:
+            raise LookupError("private inference is on: cloud subagents are refused")
         return _cloud(settings)
     labels = settings.get("prefer_labels") or ()
     excluded = excluded if excluded is not None else {}
@@ -53,8 +56,8 @@ def route(task: dict, settings: dict, nodes: list[dict], secret=None, excluded: 
     min_ctx = int(settings.get("min_context") or DEFAULT_MIN_CONTEXT)
     healthy = [n for n in nodes if check(n, results[n["id"]], want, excluded, min_ctx)[0]]
     if not healthy:
-        if where == "local":
-            raise LookupError("no healthy local box for a where=local task")
+        if where == "local" or private:
+            raise LookupError("no healthy local box" + (" and private inference refuses cloud" if private else " for a where=local task"))
         return _cloud(settings, "cloud (no healthy box)")
     ranked = sorted(healthy, key=lambda n: score(n, n["last_health"], labels, want))
     node = ranked[_next_index() % len(ranked)]
@@ -62,7 +65,9 @@ def route(task: dict, settings: dict, nodes: list[dict], secret=None, excluded: 
          "model": model_for(node, node["last_health"], want), "label": node["name"]}
     if node.get("api_key_env") and secret:
         r["api_key"] = secret(node["api_key_env"]) or ""
-    if settings.get("cloud_provider") and settings.get("cloud_model"):
+    if private:
+        r["fallback_providers"] = []  # no cloud safety net for private work
+    elif settings.get("cloud_provider") and settings.get("cloud_model"):
         r["fallback_providers"] = [{"provider": settings["cloud_provider"], "model": settings["cloud_model"]}]
     return r
 

@@ -75,5 +75,45 @@ def ensure_fallback(provider: str, model: str) -> bool:
     return True
 
 
+def _norm(url: str) -> str:
+    u = (url or "").strip().rstrip("/").lower()
+    return u[:-3] if u.endswith("/v1") else u
+
+
+def is_local_entry(entry: dict, local_urls: set[str], cfg: dict | None = None) -> bool:
+    """A fallback entry is local when its endpoint is one of the registered boxes: its own base_url,
+    or the URL of the named provider it refers to (`providers.<name>.api` / `base_url`)."""
+    if not isinstance(entry, dict):
+        return False
+    url = entry.get("base_url")
+    if not url:
+        named = ((cfg or {}).get("providers") or {}).get(entry.get("provider") or "") or {}
+        url = named.get("api") or named.get("base_url") or ""
+    return bool(url) and _norm(url) in local_urls
+
+
+def remove_non_local_fallbacks(local_urls: set[str]) -> list:
+    """Take every non-local entry off fallback_providers. Returns what was removed (for restore)."""
+    cfg = _load()
+    chain = list(cfg.get("fallback_providers") or [])
+    keep = [e for e in chain if is_local_entry(e, local_urls, cfg)]
+    removed = [e for e in chain if not is_local_entry(e, local_urls, cfg)]
+    if removed:
+        cfg["fallback_providers"] = keep
+        _save(cfg)
+    return removed
+
+
+def restore_fallbacks(entries: list) -> None:
+    """Put entries back at the end of fallback_providers (skipping any already there)."""
+    if not entries:
+        return
+    cfg = _load()
+    chain = list(cfg.get("fallback_providers") or [])
+    chain += [e for e in entries if e not in chain]
+    cfg["fallback_providers"] = chain
+    _save(cfg)
+
+
 def fallback_chain() -> list:
     return list(_load().get("fallback_providers") or [])

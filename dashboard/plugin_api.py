@@ -89,6 +89,12 @@ async def aux_toggle(body: dict):
     return await asyncio.to_thread(run)
 
 
+@router.post("/private")
+async def private(body: dict):
+    on = bool(body.get("on"))
+    return await asyncio.to_thread(lambda: {**_view(), "decision": {"reason": engine.set_private(on)}})
+
+
 @router.post("/keep")
 async def keep(body: dict):
     on = bool(body.get("on"))

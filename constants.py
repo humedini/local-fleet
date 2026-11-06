@@ -34,6 +34,9 @@ DEFAULTS = {
     "keep_loaded": False,
     # Hide box addresses in the Desktop and the terminal (screen recordings, demos).
     "hide_addresses": False,
+    # Private inference: Hermes's model calls that Local Fleet routes go only to registered boxes;
+    # when none is available Local Fleet refuses instead of using cloud. Not air-gapping.
+    "private_only": False,
     # Auxiliary tasks to run on the least busy box (hermes fleet aux on); empty = off.
     "aux_tasks": [],
     # Cloud prices per million tokens (input, output) for the "spend avoided" figure; 0 = not shown.

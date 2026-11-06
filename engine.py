@@ -221,6 +221,14 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
         target = decision["target"]
         if pin and target.get("node_id") != current["node_id"]:
             decision["warning"] = f"{pin} is not available; picked a box automatically instead"
+        if target["kind"] == "refused":
+            decision["applied"] = False
+            decision["warning"] = target["reason"]
+            if not dry_run and (state.get("last_decision") or {}).get("target", {}).get("kind") != "refused":
+                events.record("refused", "private inference: no box available, cloud refused")
+            state["last_decision"] = decision
+            store.save_state({**store.load_state(), "last_decision": decision})
+            return decision
         if target["kind"] == "cloud" and not _cloud_ready(target):
             decision["applied"] = False
             decision["warning"] = ("no cloud target set (hermes fleet setup, or "
@@ -249,8 +257,8 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
                 state["applied"]["pinned"] = True
             elif unpin:
                 state["applied"].pop("pinned", None)
-        if not dry_run and _cloud_ready({"provider": settings.get("cloud_provider"),
-                                         "model": settings.get("cloud_model")}):
+        if not dry_run and not settings.get("private_only") and _cloud_ready({"provider": settings.get("cloud_provider"),
+                                                                               "model": settings.get("cloud_model")}):
             entry = {"provider": settings["cloud_provider"], "model": settings["cloud_model"]}
             if state.get("fallback_ensured") == entry and not config_write.has_fallback(
                     config_write.fallback_chain(), entry["provider"], entry["model"]):
@@ -321,7 +329,9 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
     want = {"tasks": tasks, "node_id": node["id"], "node_name": node["name"], "model": model}
     if current == want:
         return f"side tasks unchanged{note}" if keyed else None
-    before = aux.apply(tasks, aux.block(node, model, settings.get("cloud_provider"), settings.get("cloud_model")), None)
+    private = bool(settings.get("private_only"))
+    before = aux.apply(tasks, aux.block(node, model, None if private else settings.get("cloud_provider"),
+                                        None if private else settings.get("cloud_model")), None)
     original = state.get("aux_original") or {}
     for t in tasks:
         original.setdefault(t, before.get(t, {}))
@@ -390,6 +400,29 @@ def include(ref: str) -> dict:
     if ex:
         events.record(ex.get("kind", "rehearsal"), f"{node.get('title') or node['name']}: back in selection", box=node["name"])
     return apply_policy(dry_run=not store.load_state().get("applied"))
+
+
+def set_private(on: bool) -> str:
+    """Private inference on: cloud entries come off fallback_providers (kept to put back), side
+    tasks lose their cloud fallback, subagents refuse cloud, and with no box available Local Fleet
+    refuses instead of switching to cloud. Off: the entries go back."""
+    local_urls = {config_write._norm(n["base_url"]) for n in store.fleet().nodes}
+    with store.transaction():
+        state = store.load_state()
+        if on:
+            removed = config_write.remove_non_local_fallbacks(local_urls)
+            state["private_removed"] = (state.get("private_removed") or []) + removed
+            state["aux_applied"] = state.get("aux_applied") and {**state["aux_applied"], "model": None}  # re-apply without cloud
+        else:
+            config_write.restore_fallbacks(state.pop("private_removed", None) or [])
+        store.save_state(state)
+    store.write_setting("private_only", on)
+    events.record("private", "private inference on: cloud refused" if on else "private inference off: cloud fallback restored")
+    d = apply_policy(dry_run=not store.load_state().get("applied"), aux_follow=True)
+    n = len(state.get("private_removed") or []) if on else 0
+    return (f"private inference on: {n} cloud fallback entr{'y' if n == 1 else 'ies'} taken off (restored when off). "
+            "Only Hermes's model calls are covered; tools such as web search still use the internet." if on
+            else "private inference off: cloud fallback entries restored") + (f"\n{d.get('warning')}" if d.get("warning") else "")
 
 
 def set_keep(on: bool) -> str:
@@ -471,6 +504,7 @@ def snapshot() -> dict:
         "aux": state.get("aux_applied"),
         "keep_loaded": bool(settings.get("keep_loaded")),
         "hide_addresses": bool(settings.get("hide_addresses")),
+        "private_only": bool(settings.get("private_only")),
         "paused": bool(state.get("paused")),
         "exclusions": {k: v for k, v in (state.get("exclusions") or {}).items()},
         "events": events.timeline(40),

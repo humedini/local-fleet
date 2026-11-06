@@ -146,3 +146,38 @@ def test_doctor_checks_have_fixes(hermes):  # noqa: F811
     assert by["routing"]["fix"]["action"] == "use"
     ok, lines = doctor.run()
     assert not ok and any("fix:" in l for l in lines)
+
+
+@respx.mock
+def test_private_inference_refuses_cloud_everywhere(hermes):  # noqa: F811
+    from local_fleet import delegation
+    boxes()
+    engine.apply_policy()                                    # routed to gx10, cloud entry added
+    hermes.cfg["providers"] = {"mybox": {"api": "http://s2:11434/v1"}}
+    hermes.cfg["fallback_providers"].append({"provider": "mybox", "model": "qwen"})   # a local named provider stays
+    msg = engine.set_private(True)
+    assert "1 cloud fallback entry taken off" in msg and "web search" in msg
+    assert hermes.cfg["fallback_providers"] == [{"provider": "mybox", "model": "qwen"}]
+    boxes(gx=False, s2=False)
+    d = engine.apply_policy()
+    assert d["target"]["kind"] == "refused" and "refuses cloud" in d["warning"]
+    assert hermes.cfg["model"]["base_url"] == "http://gx:11434/v1"            # never switched to cloud
+    assert any(e["kind"] == "refused" for e in events.load())
+    s = store.read_settings()
+    for task in ({"where": "cloud"}, {}):
+        try:
+            delegation.route(task, s, store.fleet().nodes)
+            raise AssertionError("subagent should be refused")
+        except LookupError as e:
+            assert "private" in str(e) or "refuses cloud" in str(e)
+    engine.set_private(False)
+    assert {"provider": "openrouter", "model": "anthropic/claude-sonnet-4"} in hermes.cfg["fallback_providers"]
+
+
+def test_local_entry_detection():
+    from local_fleet import config_write
+    urls = {"http://gx:11434"}
+    cfg = {"providers": {"gx10": {"api": "http://gx:11434/v1"}}}
+    assert config_write.is_local_entry({"provider": "custom", "base_url": "http://gx:11434/v1/"}, urls)
+    assert config_write.is_local_entry({"provider": "gx10", "model": "m"}, urls, cfg)
+    assert not config_write.is_local_entry({"provider": "openrouter", "model": "x"}, urls, cfg)

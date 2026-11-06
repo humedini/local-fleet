@@ -102,6 +102,11 @@ config_schema:
     default: false
     label: Keep the routed model loaded
     description: While Hermes is routed to an Ollama box, keep its model in memory (no cold load after idle time)
+  private_only:
+    type: bool
+    default: false
+    label: Private inference
+    description: Route Hermes's model calls only to your registered boxes; refuse rather than use cloud (set with hermes fleet private on). Not air-gapping - tools may still use the internet.
   hide_addresses:
     type: bool
     default: false

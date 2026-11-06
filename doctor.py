@@ -81,6 +81,21 @@ def checks() -> list[dict]:
     for d in drift(state):
         out.append(_check(f"drift:{d['what']}", "warn", f"Changed outside Local Fleet: {d['what']}", d["detail"],
                           {"action": "reapply", "label": "Reapply", "alt": {"action": "relinquish", "label": "Stop managing"}}))
+    if settings.get("private_only"):
+        cfg = config_write._load()
+        local_urls = {config_write._norm(n["base_url"]) for n in f.nodes}
+        cloud = [e for e in config_write.fallback_chain() if not config_write.is_local_entry(e, local_urls, cfg)]
+        out.append(_check("private", "error" if cloud else "ok",
+                          "Private inference: cloud entries on fallback_providers" if cloud else "Private inference on: no cloud fallback",
+                          ", ".join(f"{e.get('provider')}/{e.get('model')}" for e in cloud) if cloud else
+                          "Covers Hermes's model calls Local Fleet routes; tools such as web search still use the internet.",
+                          {"command": "hermes fleet private on   (takes them off again)"} if cloud else None))
+        aux_cfg = cfg.get("auxiliary") or {}
+        others = [t for t, b in aux_cfg.items() if isinstance(b, dict) and b.get("provider") not in (None, "", "auto", "main", "ollama", "vllm", "custom")
+                  and not config_write.is_local_entry(b, local_urls, cfg)]
+        if others:
+            out.append(_check("private-aux", "warn", "Side tasks still on cloud providers", ", ".join(sorted(others)),
+                              {"command": "hermes fleet aux on --tasks " + ",".join(sorted(others))}))
     applied = state.get("applied")
     out.append(_check("routing", "ok" if applied else "info",
                       f"Routed to {target_text(applied)}" if applied else "Routing is off: Hermes uses its own primary",

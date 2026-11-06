@@ -141,8 +141,11 @@ def decide(settings: dict, nodes: list[dict], results: dict[str, dict], current:
     pin_model = next((m for m in model_tiers(settings) if pinned_node and ok(pinned_node, m)), None)
     if pinned_node is not None and pin_model is not None:
         target = _local(pinned_node, results[pinned_node["id"]], pin_model, current, f"kept on {pinned_node['name']} (you chose it)")
-    elif mode == "prefer-cloud":
+    elif mode == "prefer-cloud" and not settings.get("private_only"):
         target = _cloud(settings, "prefer-cloud mode")
+    elif freest is None and settings.get("private_only"):
+        target = {"kind": "refused", "reason": "private inference: no registered box available, so Local Fleet "
+                                               "refuses cloud; Hermes's calls will fail until a box is back"}
     elif freest is None:
         why = (f"no box available with {' or '.join(model_tiers(settings))}" if want and nodes
                else "no box available")
@@ -202,6 +205,8 @@ def _candidates(nodes, results, verdicts, labels, want, target, freest) -> list[
 def same_target(target: dict, current: dict) -> bool:
     if target.get("kind") != current.get("kind"):
         return False
+    if target["kind"] == "refused":
+        return True  # refusing changes nothing in config
     if target["kind"] == "local":
         return (target.get("node_id"), target.get("model")) == (current.get("node_id"), current.get("model"))
     return (target.get("provider"), target.get("model")) == (current.get("provider"), current.get("model"))

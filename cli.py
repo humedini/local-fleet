@@ -97,6 +97,8 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p = sub.add_parser("aux", help="Run side tasks (titles, compression, …) on the least busy box")
     p.add_argument("action", choices=("on", "off", "status"))
     p.add_argument("--tasks", help=f"Comma list from {', '.join(AUX_TASKS)} (default: {', '.join(AUX_DEFAULT)})")
+    p = sub.add_parser("private", help="Private inference: only your boxes, refuse cloud (not air-gapping)")
+    p.add_argument("action", choices=("on", "off", "status"))
     p = sub.add_parser("snapshot", help="Print the fleet's current state as JSON (for dashboards and status screens)")
     p.add_argument("--probe", action="store_true", help="probe every box first (changes nothing else)")
     p = sub.add_parser("privacy", help="Hide box addresses in the Desktop and terminal (for recordings)")
@@ -434,6 +436,12 @@ def _dispatch(cmd: str, args) -> int:
         return 0
     if cmd == "aux":
         return _aux(args)
+    if cmd == "private":
+        if args.action == "status":
+            print(f"private inference: {'on' if store.read_settings().get('private_only') else 'off'}")
+        else:
+            print(engine.set_private(args.action == "on"))
+        return 0
     if cmd == "snapshot":
         print(json.dumps(snapshot_view(probe=args.probe)))
         return 0
