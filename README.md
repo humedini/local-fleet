@@ -328,6 +328,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 - Private inference covers Hermes's model routing only (see its table); it is not air-gapping.
 - State saved by v0.1.0 before the literal-key guard may still hold a side-task key in `state.json`; the doctor says so, and `hermes fleet aux off` puts it back in config and drops it. Nothing scrubs it silently.
 - The savings baseline is your cloud backup at Hermes's rate-card price (USD), or the model you name with your own prices; prices entered before 0.2.0 without `--model` show the model as not recorded.
+- The automatic cloud price imports `agent.usage_pricing.get_pricing_entry`, which Hermes has not documented for plugins, so `hermes plugins validate` warns about it (catalog rule 9). If a Hermes release moves it, the lookup returns nothing: savings shows "unavailable" until you set a price with `hermes fleet price`. Nothing else breaks. Checked against Hermes 0.22.7 and 0.23.0 in CI.
 - If loading a model on the new box fails during a switch, the switch still happens and the toast says why; it does not yet try the next box instead.
 - Load for Ollama boxes counts models in memory; it cannot see other GPU work (training jobs). Speeds are snapshots.
 - Clusters are shown and routed, not created; the interconnect label is what you declare.
