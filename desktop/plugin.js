@@ -200,45 +200,47 @@ const CSS = `
 .hs-ev[data-kind=local]::before{background:${SPARK_GREEN}}
 .hs-ev[data-via=failover]::before{background:var(--ui-orange,#df6500)}
 .hs-ev small{display:block;color:var(--ui-text-tertiary);font-size:11px}
-.hs-rec{border:1px solid var(--ui-stroke-tertiary);border-radius:10px;margin-top:18px;overflow:hidden;container-type:inline-size}
-.hs-rec-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--ui-stroke-tertiary);background:color-mix(in srgb,var(--ui-text-primary) 3%,transparent)}
-.hs-rec-title{margin-right:auto;display:flex;flex-direction:column;gap:2px}
-.hs-rec-title b{font-size:13px;font-weight:600;letter-spacing:.02em}
+.hs-rec{border:1px solid var(--ui-stroke-tertiary);border-radius:8px;margin-top:18px;container-type:inline-size}
+.hs-rec-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--ui-stroke-tertiary)}
+.hs-rec-title{margin-right:auto;display:flex;flex-direction:column;gap:3px}
+.hs-rec-title b{font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-secondary)}
 .hs-rec-title small{font-size:11px;color:var(--ui-text-tertiary)}
 .hs-rec-body{padding:12px 14px 14px}
-.hs-rec-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.hs-rec-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 @container (max-width:620px){.hs-rec-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.hs-stat{--k:var(--ui-text-quaternary);border:1px solid var(--ui-stroke-tertiary);border-top:2px solid var(--k);border-radius:8px;padding:8px 10px;min-width:0}
-.hs-stat small{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ui-text-tertiary)}
-.hs-stat b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.hs-stat{border:1px solid var(--ui-stroke-tertiary);border-radius:6px;padding:9px 12px;min-width:0}
+.hs-stat b{display:block;font-size:20px;font-weight:600;line-height:26px;font-variant-numeric:tabular-nums}
+.hs-stat b[data-tone]{color:var(--k)}
 .hs-stat span{display:block;font-size:11px;color:var(--ui-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-tape-wrap{margin:14px 0 4px}
-.hs-tape{position:relative;height:30px;border:1px solid var(--ui-stroke-tertiary);border-radius:6px;background:repeating-linear-gradient(90deg,transparent 0 calc(100%/24 - 1px),color-mix(in srgb,var(--ui-text-primary) 6%,transparent) calc(100%/24 - 1px) calc(100%/24))}
-.hs-tick{position:absolute;top:5px;bottom:5px;width:3px;margin-left:-1px;border-radius:2px;background:var(--k);opacity:.9}
-.hs-tick[data-sim=true]{top:9px;bottom:9px;opacity:.7}
-.hs-tape-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--ui-text-tertiary);margin-top:3px;font-variant-numeric:tabular-nums}
-.hs-rec-filters{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px}
-.hs-filter{all:unset;cursor:pointer;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--ui-stroke-tertiary);color:var(--ui-text-secondary)}
-.hs-filter:hover{color:var(--ui-text-primary)}
-.hs-filter[data-on=true]{border-color:var(--k,${SPARK_GREEN});color:var(--ui-text-primary);background:color-mix(in srgb,var(--k,${SPARK_GREEN}) 14%,transparent)}
-.hs-filter i{font-style:normal;margin-left:5px;color:var(--ui-text-tertiary);font-variant-numeric:tabular-nums}
-.hs-rec-day{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-tertiary);margin:12px 0 6px}
+.hs-tape{position:relative;height:26px;border:1px solid var(--ui-stroke-tertiary);border-radius:4px;background:repeating-linear-gradient(90deg,transparent 0 calc(100%/24 - 1px),var(--ui-stroke-tertiary) calc(100%/24 - 1px) calc(100%/24))}
+.hs-tick{position:absolute;top:50%;width:7px;height:7px;margin:-4px 0 0 -4px;transform:rotate(45deg);background:var(--k)}
+.hs-tick[data-sim=true]{background:none;border:1px solid var(--k)}
+.hs-tape-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--ui-text-tertiary);margin-top:4px;font-variant-numeric:tabular-nums}
+.hs-rec-filters{display:inline-grid;grid-auto-flow:column;padding:2px;border-radius:7px;background:var(--ui-bg-tertiary,rgba(127,127,127,.12));margin:12px 0 4px}
+.hs-rec-filters button{all:unset;cursor:pointer;font-size:11px;line-height:22px;padding:0 12px;border-radius:5px;color:var(--ui-text-secondary)}
+.hs-rec-filters button:hover{color:var(--ui-text-primary)}
+.hs-rec-filters button[aria-checked=true]{background:var(--ui-bg-elevated,var(--ui-bg-card));color:var(--ui-text-primary);box-shadow:0 0 0 1px var(--ui-stroke-secondary)}
+.hs-rec-filters i{font-style:normal;margin-left:6px;color:var(--ui-text-tertiary);font-variant-numeric:tabular-nums}
+.hs-rec-day{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-tertiary);margin:14px 0 6px}
 .hs-rec-list{display:flex;flex-direction:column;gap:6px}
-.hs-row{--k:var(--ui-text-quaternary);display:grid;grid-template-columns:104px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--ui-stroke-tertiary);border-left:3px solid var(--k);border-radius:8px;background:color-mix(in srgb,var(--k) 5%,transparent)}
-.hs-row[data-sim=true]{border-style:dashed;border-left-style:solid}
-.hs-row-badge{justify-self:start;font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;padding:4px 6px;border-radius:4px;color:var(--k);background:color-mix(in srgb,var(--k) 15%,transparent);white-space:nowrap}
-.hs-row-text{font-size:12.5px;min-width:0;overflow-wrap:anywhere}
-.hs-row-text small{display:block;font-size:11px;color:var(--ui-text-tertiary);margin-top:2px}
-.hs-row-time{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.hs-row-time small{display:block;font-size:10.5px;color:var(--ui-text-tertiary)}
-@container (max-width:520px){.hs-row{grid-template-columns:minmax(0,1fr) auto}.hs-row-badge{grid-column:1/-1}}
+.hs-evrow{display:grid;grid-template-columns:9px 92px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 12px;border:1px solid var(--ui-stroke-tertiary);border-radius:6px}
+.hs-evrow[data-sim=true]{border-style:dashed}
+.hs-evrow-mark{width:7px;height:7px;transform:rotate(45deg);background:var(--k)}
+.hs-evrow[data-sim=true] .hs-evrow-mark{background:none;border:1px solid var(--k)}
+.hs-evrow-kind{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--k);white-space:nowrap}
+.hs-evrow-text{font-size:12.5px;min-width:0;overflow-wrap:anywhere}
+.hs-evrow-text small{display:block;font-size:11px;color:var(--ui-text-tertiary);margin-top:2px}
+.hs-evrow-time{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hs-evrow-time small{display:block;font-size:10.5px;color:var(--ui-text-tertiary)}
+@container (max-width:520px){.hs-evrow{grid-template-columns:9px minmax(0,1fr) auto}.hs-evrow-kind{grid-column:2/-1;grid-row:1}.hs-evrow-text{grid-column:2}}
 .hs-rec-more{margin-top:10px}
-[data-tone=good]{--k:${SPARK_GREEN}}
-[data-tone=served]{--k:#6ee7ff}
-[data-tone=bad]{--k:var(--ui-red,#e5484d)}
-[data-tone=sim]{--k:var(--ui-orange,#df6500)}
-[data-tone=private]{--k:#b48cff}
-[data-tone=info]{--k:#8aa4c8}
+.hs-rec [data-tone=good]{--k:${SPARK_GREEN}}
+.hs-rec [data-tone=served]{--k:#6ee7ff}
+.hs-rec [data-tone=bad]{--k:var(--ui-red,#e5484d)}
+.hs-rec [data-tone=sim]{--k:var(--ui-orange,#df6500)}
+.hs-rec [data-tone=private]{--k:#c7a3ff}
+.hs-rec [data-tone=info]{--k:var(--ui-text-tertiary)}
 `
 
 
@@ -970,7 +972,7 @@ function WhyPanel({ s, focus, onRecheck, busy }) {
 const EVENT_LABEL = { route: 'configured', served: 'served', health: 'health', rehearsal: 'rehearsal', maintenance: 'maintenance', drift: 'drift', aux: 'side tasks', refused: 'refused', private: 'private' }
 
 const SIM_KINDS = new Set(['rehearsal', 'maintenance', 'pack'])
-const REC_FILTERS = [['all', 'All', null], ['route', 'Configured', 'good'], ['served', 'Served', 'served'], ['health', 'Health', 'bad'], ['sim', 'Simulated', 'sim']]
+const REC_FILTERS = [['all', 'All'], ['route', 'Configured'], ['served', 'Served'], ['health', 'Health'], ['sim', 'Simulated']]
 const DAY_S = 86400
 
 // One colour per meaning, not per kind: a box coming back is good news, a box going down is bad.
@@ -1005,12 +1007,12 @@ function RecStats({ events, now }) {
   const down = day.filter(e => e.kind === 'health' && /went down/.test(e.text || ''))
   const sim = day.filter(e => SIM_KINDS.has(e.kind)).length
   const served = events.filter(e => e.kind === 'served').slice(-1)[0]
-  const tile = (tone, label, value, sub) => jsxs('div', { className: 'hs-stat', 'data-tone': tone, children: [
-    jsx('small', { children: label }), jsx('b', { children: value }), jsx('span', { title: sub, children: sub })] }, label)
+  const tile = (tone, label, value, sub) => jsxs('div', { className: 'hs-stat', children: [
+    jsx('b', { 'data-tone': tone || undefined, children: value }), jsx('span', { children: label }), jsx('span', { title: sub, children: sub })] }, label)
   return jsx('div', { className: 'hs-rec-stats', children: [
-    tile('good', 'Route changes · 24 h', routes, routes ? 'set by Local Fleet' : 'Hermes stayed put'),
-    tile(down.length ? 'bad' : 'good', 'Real outages · 24 h', down.length, down.length ? `last ${clock(down[down.length - 1].t)}` : 'none'),
-    tile('sim', 'Rehearsal events · 24 h', sim, sim ? 'simulated, nothing stopped' : 'none'),
+    tile(null, 'Route changes (24 h)', routes, routes ? 'set by Local Fleet' : 'Hermes stayed put'),
+    tile(down.length ? 'bad' : null, 'Real outages (24 h)', down.length, down.length ? `last ${clock(down[down.length - 1].t)}` : 'none'),
+    tile(sim ? 'sim' : null, 'Rehearsal events (24 h)', sim, sim ? 'simulated, nothing stopped' : 'none'),
     tile('served', 'Last served', served ? ago(new Date(served.t * 1000).toISOString()) : 'n/a', served ? served.text : 'no calls seen yet')] })
 }
 
@@ -1042,15 +1044,17 @@ function Recorder({ events }) {
   return jsxs('div', { children: [
     jsx(RecStats, { events: all, now }),
     jsx(Tape, { events: all, now }),
-    jsx('div', { className: 'hs-rec-filters', role: 'group', 'aria-label': 'Show', children: REC_FILTERS.map(([k, label, tone]) =>
-      jsxs('button', { type: 'button', className: 'hs-filter', 'data-on': filter === k, 'data-tone': tone || undefined,
+    jsx('div', { className: 'hs-rec-filters', role: 'radiogroup', 'aria-label': 'Show', children: REC_FILTERS.map(([k, label]) =>
+      jsxs('button', { type: 'button', role: 'radio', 'aria-checked': filter === k,
         onClick: () => setFilter(k), children: [label, jsx('i', { children: k === 'all' ? all.length : all.filter(e => evGroup(e) === k).length })] }, k)) }),
     rows.length ? groups.map(g => jsxs('div', { children: [
       jsx('div', { className: 'hs-rec-day', children: g.label }),
-      jsx('div', { className: 'hs-rec-list', children: g.items.map((e, i) => jsxs('div', { className: 'hs-row', 'data-tone': evTone(e), 'data-sim': SIM_KINDS.has(e.kind), children: [
-        jsx('span', { className: 'hs-row-badge', title: SIM_KINDS.has(e.kind) ? 'Simulation: nothing was stopped on any box' : undefined, children: EVENT_LABEL[e.kind] || e.kind }),
-        jsxs('div', { className: 'hs-row-text', children: [e.text, e.reason ? jsx('small', { children: e.reason }) : null] }),
-        jsxs('div', { className: 'hs-row-time', children: [clock(e.t || 0), jsx('small', { children: ago(new Date((e.t || 0) * 1000).toISOString()) })] })
+      jsx('div', { className: 'hs-rec-list', children: g.items.map((e, i) => jsxs('div', { className: 'hs-evrow', 'data-tone': evTone(e), 'data-sim': SIM_KINDS.has(e.kind),
+        title: SIM_KINDS.has(e.kind) ? 'Simulation: nothing was stopped on any box' : undefined, children: [
+        jsx('span', { className: 'hs-evrow-mark' }),
+        jsx('span', { className: 'hs-evrow-kind', children: EVENT_LABEL[e.kind] || e.kind }),
+        jsxs('div', { className: 'hs-evrow-text', children: [e.text, e.reason ? jsx('small', { children: e.reason }) : null] }),
+        jsxs('div', { className: 'hs-evrow-time', children: [clock(e.t || 0), jsx('small', { children: ago(new Date((e.t || 0) * 1000).toISOString()) })] })
       ] }, `${e.t}-${i}`)) })] }, g.label))
       : jsx('div', { className: 'hs-page-hint', children: 'Nothing of this kind in the recorder.' }),
     shown.length > 12 ? jsx('div', { className: 'hs-rec-more', children: jsx('button', { type: 'button', className: 'hs-mini', onClick: () => setMore(!more),
