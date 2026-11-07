@@ -182,10 +182,6 @@ const CSS = `
 .hs-models span[data-fallback=true]{color:${SPARK_GREEN};box-shadow:inset 0 0 0 1px color-mix(in srgb,${SPARK_GREEN} 60%,transparent)}
 .hs-section-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:18px 0 6px}
 .hs-section-row .hs-section{margin:0;margin-right:auto}
-.hs-mini{all:unset;cursor:pointer;font-size:11.5px;color:var(--ui-text-secondary);padding:2px 8px;border:1px solid var(--ui-stroke-tertiary);border-radius:6px}
-.hs-mini:hover{border-color:${SPARK_GREEN};color:var(--ui-text-primary)}
-.hs-mini[disabled]{opacity:.5;cursor:default}
-.hs-mini[data-sim=true]{border-color:var(--ui-orange,#df6500)}
 .hs-demo{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:70;width:min(760px,calc(100vw - 32px));display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:10px;background:var(--ui-bg-elevated,#1b1b20);border:1px solid ${SPARK_GREEN};box-shadow:0 18px 50px rgba(0,0,0,.5);font-size:13px}
 .hs-demo[data-sim=true]{border-color:var(--ui-orange,#df6500)}
 .hs-demo-text{flex:1;display:flex;flex-direction:column;gap:2px}
@@ -1057,7 +1053,7 @@ function Recorder({ events }) {
         jsxs('div', { className: 'hs-evrow-time', children: [clock(e.t || 0), jsx('small', { children: ago(new Date((e.t || 0) * 1000).toISOString()) })] })
       ] }, `${e.t}-${i}`)) })] }, g.label))
       : jsx('div', { className: 'hs-page-hint', children: 'Nothing of this kind in the recorder.' }),
-    shown.length > 12 ? jsx('div', { className: 'hs-rec-more', children: jsx('button', { type: 'button', className: 'hs-mini', onClick: () => setMore(!more),
+    shown.length > 12 ? jsx('div', { className: 'hs-rec-more', children: jsx(Button, { size: 'sm', variant: 'outline', onClick: () => setMore(!more),
       children: more ? 'Show fewer' : `Show all ${Math.min(shown.length, 120)}` }) }) : null
   ] })
 }
@@ -1328,13 +1324,13 @@ function FleetPage({ ctx }) {
       jsxs('div', { className: 'hs-rec-head', children: [
         jsxs('div', { className: 'hs-rec-title', children: [jsx('b', { children: 'Flight recorder' }),
           jsx('small', { children: 'Configured is what Local Fleet set; served is what actually answered. Rehearsals are simulations.' })] }),
-        jsx('span', { className: 'hs-page-hint', children: 'Rehearse:' }),
+        jsx('span', { className: 'hs-page-hint', title: 'Simulations inside Local Fleet: nothing is stopped on any box', children: 'Rehearse (simulated):' }),
         ...[['local-a-down', 'Local A down'], ['force-cloud-hop', 'Force cloud hop'], ['recover-drift', 'Recover + drift']].map(([k, label]) =>
-          jsx('button', { type: 'button', className: 'hs-mini', 'data-sim': true, disabled: Boolean(busy || demo),
+          jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy || demo),
             title: 'Simulation inside Local Fleet: nothing is stopped on any box', onClick: () => run('pack', '/pack', { name: k }), children: label }, k)),
-        jsx('button', { type: 'button', className: 'hs-mini', disabled: Boolean(busy || demo), title: 'End the rehearsals the packs started (yours stay)',
+        jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy || demo), title: 'End the rehearsals the packs started (yours stay)',
           onClick: () => run('pack', '/pack', { end: true }), children: 'End packs' }),
-        jsx('button', { type: 'button', className: 'hs-mini', title: 'The last 24 h as Markdown for chat or Notion, addresses removed',
+        jsx(Button, { size: 'sm', variant: 'outline', title: 'The last 24 h as Markdown for chat or Notion, addresses removed',
           onClick: () => copyFrom('/incident?hours=24', 'Incident card'), children: 'Copy incident card' })] }),
       jsx('div', { className: 'hs-rec-body', children: jsx(Recorder, { events: s.events }) })] }),
     drawer && drawer.kind === 'why' && jsx(Drawer, { title: 'Why this box?', onClose: () => setDrawer(null),
