@@ -621,7 +621,7 @@ def snapshot() -> dict:
         "watch_at": state.get("watch_at"),
         "paused": bool(state.get("paused")),
         "exclusions": {k: v for k, v in (state.get("exclusions") or {}).items()},
-        "events": events.timeline(40),
+        "events": events.timeline(120),
         "drift": drift(state),
         "delegation_backend": store.delegation_backend(),
         "delegations": (state.get("delegations") or [])[-10:],

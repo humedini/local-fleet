@@ -200,6 +200,45 @@ const CSS = `
 .hs-ev[data-kind=local]::before{background:${SPARK_GREEN}}
 .hs-ev[data-via=failover]::before{background:var(--ui-orange,#df6500)}
 .hs-ev small{display:block;color:var(--ui-text-tertiary);font-size:11px}
+.hs-rec{border:1px solid var(--ui-stroke-tertiary);border-radius:10px;margin-top:18px;overflow:hidden;container-type:inline-size}
+.hs-rec-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--ui-stroke-tertiary);background:color-mix(in srgb,var(--ui-text-primary) 3%,transparent)}
+.hs-rec-title{margin-right:auto;display:flex;flex-direction:column;gap:2px}
+.hs-rec-title b{font-size:13px;font-weight:600;letter-spacing:.02em}
+.hs-rec-title small{font-size:11px;color:var(--ui-text-tertiary)}
+.hs-rec-body{padding:12px 14px 14px}
+.hs-rec-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@container (max-width:620px){.hs-rec-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hs-stat{--k:var(--ui-text-quaternary);border:1px solid var(--ui-stroke-tertiary);border-top:2px solid var(--k);border-radius:8px;padding:8px 10px;min-width:0}
+.hs-stat small{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.hs-stat b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.hs-stat span{display:block;font-size:11px;color:var(--ui-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-tape-wrap{margin:14px 0 4px}
+.hs-tape{position:relative;height:30px;border:1px solid var(--ui-stroke-tertiary);border-radius:6px;background:repeating-linear-gradient(90deg,transparent 0 calc(100%/24 - 1px),color-mix(in srgb,var(--ui-text-primary) 6%,transparent) calc(100%/24 - 1px) calc(100%/24))}
+.hs-tick{position:absolute;top:5px;bottom:5px;width:3px;margin-left:-1px;border-radius:2px;background:var(--k);opacity:.9}
+.hs-tick[data-sim=true]{top:9px;bottom:9px;opacity:.7}
+.hs-tape-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--ui-text-tertiary);margin-top:3px;font-variant-numeric:tabular-nums}
+.hs-rec-filters{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px}
+.hs-filter{all:unset;cursor:pointer;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--ui-stroke-tertiary);color:var(--ui-text-secondary)}
+.hs-filter:hover{color:var(--ui-text-primary)}
+.hs-filter[data-on=true]{border-color:var(--k,${SPARK_GREEN});color:var(--ui-text-primary);background:color-mix(in srgb,var(--k,${SPARK_GREEN}) 14%,transparent)}
+.hs-filter i{font-style:normal;margin-left:5px;color:var(--ui-text-tertiary);font-variant-numeric:tabular-nums}
+.hs-rec-day{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ui-text-tertiary);margin:12px 0 6px}
+.hs-rec-list{display:flex;flex-direction:column;gap:6px}
+.hs-row{--k:var(--ui-text-quaternary);display:grid;grid-template-columns:104px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--ui-stroke-tertiary);border-left:3px solid var(--k);border-radius:8px;background:color-mix(in srgb,var(--k) 5%,transparent)}
+.hs-row[data-sim=true]{border-style:dashed;border-left-style:solid}
+.hs-row-badge{justify-self:start;font:600 10px/1 ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;padding:4px 6px;border-radius:4px;color:var(--k);background:color-mix(in srgb,var(--k) 15%,transparent);white-space:nowrap}
+.hs-row-text{font-size:12.5px;min-width:0;overflow-wrap:anywhere}
+.hs-row-text small{display:block;font-size:11px;color:var(--ui-text-tertiary);margin-top:2px}
+.hs-row-time{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hs-row-time small{display:block;font-size:10.5px;color:var(--ui-text-tertiary)}
+@container (max-width:520px){.hs-row{grid-template-columns:minmax(0,1fr) auto}.hs-row-badge{grid-column:1/-1}}
+.hs-rec-more{margin-top:10px}
+[data-tone=good]{--k:${SPARK_GREEN}}
+[data-tone=served]{--k:#6ee7ff}
+[data-tone=bad]{--k:var(--ui-red,#e5484d)}
+[data-tone=sim]{--k:var(--ui-orange,#df6500)}
+[data-tone=private]{--k:#b48cff}
+[data-tone=info]{--k:#8aa4c8}
 `
 
 
@@ -930,18 +969,92 @@ function WhyPanel({ s, focus, onRecheck, busy }) {
 
 const EVENT_LABEL = { route: 'configured', served: 'served', health: 'health', rehearsal: 'rehearsal', maintenance: 'maintenance', drift: 'drift', aux: 'side tasks', refused: 'refused', private: 'private' }
 
+const SIM_KINDS = new Set(['rehearsal', 'maintenance', 'pack'])
+const REC_FILTERS = [['all', 'All', null], ['route', 'Configured', 'good'], ['served', 'Served', 'served'], ['health', 'Health', 'bad'], ['sim', 'Simulated', 'sim']]
+const DAY_S = 86400
+
+// One colour per meaning, not per kind: a box coming back is good news, a box going down is bad.
+function evTone(e) {
+  const t = e.text || ''
+  if (SIM_KINDS.has(e.kind) || e.kind === 'drift') return 'sim'
+  if (e.kind === 'health') return /went down|failed|refused/i.test(t) ? 'bad' : 'good'
+  if (e.kind === 'served') return /call failed/.test(t) ? 'bad' : 'served'
+  if (e.kind === 'refused') return 'bad'
+  if (e.kind === 'private') return 'private'
+  if (e.kind === 'route') return /^cloud/.test(t) ? 'sim' : 'good'
+  return 'info'
+}
+
+function evGroup(e) {
+  return SIM_KINDS.has(e.kind) ? 'sim' : e.kind
+}
+
+function clock(t) {
+  return new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function dayLabel(t, now) {
+  const d = new Date(t * 1000), today = new Date(now * 1000)
+  const diff = Math.round((new Date(today.toDateString()) - new Date(d.toDateString())) / 864e5)
+  return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })
+}
+
+function RecStats({ events, now }) {
+  const day = events.filter(e => (e.t || 0) >= now - DAY_S)
+  const routes = day.filter(e => e.kind === 'route').length
+  const down = day.filter(e => e.kind === 'health' && /went down/.test(e.text || ''))
+  const sim = day.filter(e => SIM_KINDS.has(e.kind)).length
+  const served = events.filter(e => e.kind === 'served').slice(-1)[0]
+  const tile = (tone, label, value, sub) => jsxs('div', { className: 'hs-stat', 'data-tone': tone, children: [
+    jsx('small', { children: label }), jsx('b', { children: value }), jsx('span', { title: sub, children: sub })] }, label)
+  return jsx('div', { className: 'hs-rec-stats', children: [
+    tile('good', 'Route changes · 24 h', routes, routes ? 'set by Local Fleet' : 'Hermes stayed put'),
+    tile(down.length ? 'bad' : 'good', 'Real outages · 24 h', down.length, down.length ? `last ${clock(down[down.length - 1].t)}` : 'none'),
+    tile('sim', 'Rehearsal events · 24 h', sim, sim ? 'simulated, nothing stopped' : 'none'),
+    tile('served', 'Last served', served ? ago(new Date(served.t * 1000).toISOString()) : 'n/a', served ? served.text : 'no calls seen yet')] })
+}
+
+function Tape({ events, now }) {
+  const day = events.filter(e => (e.t || 0) >= now - DAY_S)
+  return jsxs('div', { className: 'hs-tape-wrap', children: [
+    jsx('div', { className: 'hs-tape', role: 'img', 'aria-label': `${day.length} events in the last 24 hours`, children: day.map((e, i) =>
+      jsx('div', { className: 'hs-tick', 'data-tone': evTone(e), 'data-sim': SIM_KINDS.has(e.kind),
+        style: { left: `${Math.min(100, Math.max(0, 100 - ((now - e.t) / DAY_S) * 100))}%` },
+        title: `${clock(e.t)} · ${EVENT_LABEL[e.kind] || e.kind}: ${e.text}` }, `${e.t}-${i}`)) }),
+    jsxs('div', { className: 'hs-tape-axis', children: [jsx('span', { children: '24 h ago' }), jsx('span', { children: '18 h' }),
+      jsx('span', { children: '12 h' }), jsx('span', { children: '6 h' }), jsx('span', { children: 'now' })] })] })
+}
+
 function Recorder({ events }) {
-  const items = (events || []).slice().reverse().slice(0, 14)
-  if (!items.length) return jsx('div', { className: 'hs-page-hint', children: 'Nothing recorded yet. Routing changes, health changes, rehearsals and what Hermes actually served will appear here.' })
+  const [filter, setFilter] = useState('all')
+  const [more, setMore] = useState(false)
+  const all = events || []
+  if (!all.length) return jsx('div', { className: 'hs-page-hint', children: 'Nothing recorded yet. Routing changes, health changes, rehearsals and what Hermes actually served will appear here.' })
+  const now = Date.now() / 1000
+  const shown = all.filter(e => filter === 'all' || evGroup(e) === filter).slice().reverse()
+  const rows = shown.slice(0, more ? 120 : 12)
+  const groups = []
+  for (const e of rows) {
+    const label = dayLabel(e.t || 0, now)
+    if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, items: [] })
+    groups[groups.length - 1].items.push(e)
+  }
   return jsxs('div', { children: [
-    jsxs('div', { className: 'hs-rec-legend', children: [
-      jsx('span', { 'data-k': 'route', children: 'configured: what Local Fleet set' }),
-      jsx('span', { 'data-k': 'served', children: 'served: what actually answered' }),
-      jsx('span', { 'data-k': 'health', children: 'health' }), jsx('span', { 'data-k': 'rehearsal', children: 'rehearsal / maintenance' })] }),
-    jsx('div', { className: 'hs-timeline', children: items.map((e, i) => jsxs('div', { className: 'hs-ev', 'data-k': e.kind, children: [
-      jsx('em', { children: EVENT_LABEL[e.kind] || e.kind }), ' ', e.text,
-      jsx('small', { children: `${ago(new Date((e.t || 0) * 1000).toISOString())}${e.reason ? ` · ${e.reason}` : ''}` })
-    ] }, `${e.t}-${i}`)) })
+    jsx(RecStats, { events: all, now }),
+    jsx(Tape, { events: all, now }),
+    jsx('div', { className: 'hs-rec-filters', role: 'group', 'aria-label': 'Show', children: REC_FILTERS.map(([k, label, tone]) =>
+      jsxs('button', { type: 'button', className: 'hs-filter', 'data-on': filter === k, 'data-tone': tone || undefined,
+        onClick: () => setFilter(k), children: [label, jsx('i', { children: k === 'all' ? all.length : all.filter(e => evGroup(e) === k).length })] }, k)) }),
+    rows.length ? groups.map(g => jsxs('div', { children: [
+      jsx('div', { className: 'hs-rec-day', children: g.label }),
+      jsx('div', { className: 'hs-rec-list', children: g.items.map((e, i) => jsxs('div', { className: 'hs-row', 'data-tone': evTone(e), 'data-sim': SIM_KINDS.has(e.kind), children: [
+        jsx('span', { className: 'hs-row-badge', title: SIM_KINDS.has(e.kind) ? 'Simulation: nothing was stopped on any box' : undefined, children: EVENT_LABEL[e.kind] || e.kind }),
+        jsxs('div', { className: 'hs-row-text', children: [e.text, e.reason ? jsx('small', { children: e.reason }) : null] }),
+        jsxs('div', { className: 'hs-row-time', children: [clock(e.t || 0), jsx('small', { children: ago(new Date((e.t || 0) * 1000).toISOString()) })] })
+      ] }, `${e.t}-${i}`)) })] }, g.label))
+      : jsx('div', { className: 'hs-page-hint', children: 'Nothing of this kind in the recorder.' }),
+    shown.length > 12 ? jsx('div', { className: 'hs-rec-more', children: jsx('button', { type: 'button', className: 'hs-mini', onClick: () => setMore(!more),
+      children: more ? 'Show fewer' : `Show all ${Math.min(shown.length, 120)}` }) }) : null
   ] })
 }
 
@@ -1207,9 +1320,10 @@ function FleetPage({ ctx }) {
     jsxs('div', { 'data-demo': 'readiness', children: [
       jsx('div', { className: 'hs-section', children: 'Readiness: can each box run Hermes on your models?' }),
       jsx(ReadinessMatrix, { s })] }),
-    jsxs('div', { 'data-demo': 'recorder', children: [
-      jsxs('div', { className: 'hs-section-row', children: [
-        jsx('div', { className: 'hs-section', children: 'Flight recorder' }),
+    jsxs('div', { 'data-demo': 'recorder', className: 'hs-rec', children: [
+      jsxs('div', { className: 'hs-rec-head', children: [
+        jsxs('div', { className: 'hs-rec-title', children: [jsx('b', { children: 'Flight recorder' }),
+          jsx('small', { children: 'Configured is what Local Fleet set; served is what actually answered. Rehearsals are simulations.' })] }),
         jsx('span', { className: 'hs-page-hint', children: 'Rehearse:' }),
         ...[['local-a-down', 'Local A down'], ['force-cloud-hop', 'Force cloud hop'], ['recover-drift', 'Recover + drift']].map(([k, label]) =>
           jsx('button', { type: 'button', className: 'hs-mini', 'data-sim': true, disabled: Boolean(busy || demo),
@@ -1218,7 +1332,7 @@ function FleetPage({ ctx }) {
           onClick: () => run('pack', '/pack', { end: true }), children: 'End packs' }),
         jsx('button', { type: 'button', className: 'hs-mini', title: 'The last 24 h as Markdown for chat or Notion, addresses removed',
           onClick: () => copyFrom('/incident?hours=24', 'Incident card'), children: 'Copy incident card' })] }),
-      jsx(Recorder, { events: s.events })] }),
+      jsx('div', { className: 'hs-rec-body', children: jsx(Recorder, { events: s.events }) })] }),
     drawer && drawer.kind === 'why' && jsx(Drawer, { title: 'Why this box?', onClose: () => setDrawer(null),
       children: jsx(WhyPanel, { s, focus: drawer.node, busy: busy === 'why', onRecheck: () => run('why', '/why') }) }),
     drawer && drawer.kind === 'doctor' && jsx(Drawer, { title: 'Fleet doctor', onClose: () => setDrawer(null),
