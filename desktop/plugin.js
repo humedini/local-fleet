@@ -204,10 +204,10 @@ const CSS = `
 .hs-rec-body{padding:12px 14px 14px}
 .hs-rec-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 @container (max-width:620px){.hs-rec-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.hs-stat{border:1px solid var(--ui-stroke-tertiary);border-radius:6px;padding:9px 12px;min-width:0}
-.hs-stat b{display:block;font-size:20px;font-weight:600;line-height:26px;font-variant-numeric:tabular-nums}
-.hs-stat b[data-tone]{color:var(--k)}
-.hs-stat span{display:block;font-size:11px;color:var(--ui-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-rec .hs-stat{border:1px solid var(--ui-stroke-tertiary);border-radius:6px;padding:9px 12px;min-width:0}
+.hs-rec .hs-stat b{display:block;font-size:20px;font-weight:600;line-height:26px;font-variant-numeric:tabular-nums}
+.hs-rec .hs-stat b[data-tone]{color:var(--k)}
+.hs-rec .hs-stat span{display:block;font-size:11px;color:var(--ui-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hs-tape-wrap{margin:14px 0 4px}
 .hs-tape{position:relative;height:26px;border:1px solid var(--ui-stroke-tertiary);border-radius:4px;background:repeating-linear-gradient(90deg,transparent 0 calc(100%/24 - 1px),var(--ui-stroke-tertiary) calc(100%/24 - 1px) calc(100%/24))}
 .hs-tick{position:absolute;top:50%;width:7px;height:7px;margin:-4px 0 0 -4px;transform:rotate(45deg);background:var(--k)}
@@ -231,6 +231,12 @@ const CSS = `
 .hs-evrow-time small{display:block;font-size:10.5px;color:var(--ui-text-tertiary)}
 @container (max-width:520px){.hs-evrow{grid-template-columns:9px minmax(0,1fr) auto}.hs-evrow-kind{grid-column:2/-1;grid-row:1}.hs-evrow-text{grid-column:2}}
 .hs-rec-more{margin-top:10px}
+.hs-rehearse{width:300px;max-width:calc(100vw - 24px);padding:6px;display:flex;flex-direction:column;gap:2px}
+.hs-rehearse small.hs-rehearse-note{font-size:11px;color:var(--ui-text-tertiary);padding:4px 8px 6px;border-bottom:1px solid var(--ui-stroke-tertiary);margin-bottom:4px}
+.hs-rehearse button{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:5px;font-size:12px}
+.hs-rehearse button:hover{background:var(--ui-row-active-background)}
+.hs-rehearse button[disabled]{opacity:.5;cursor:default}
+.hs-rehearse button small{font-size:11px;color:var(--ui-text-tertiary)}
 .hs-rec [data-tone=good]{--k:${SPARK_GREEN}}
 .hs-rec [data-tone=served]{--k:#6ee7ff}
 .hs-rec [data-tone=bad]{--k:var(--ui-red,#e5484d)}
@@ -997,18 +1003,43 @@ function dayLabel(t, now) {
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })
 }
 
-function RecStats({ events, now }) {
+// Share of the last 24 h Hermes was routed to a box (held on one counts: no call went to cloud),
+// from the configured-route events; before the first one in view, the route it replaced is unknown.
+function localShare(events, now, applied) {
+  const start = now - DAY_S
+  const routes = events.filter(e => e.kind === 'route')
+  const before = routes.filter(e => e.t < start).slice(-1)[0]
+  const inside = routes.filter(e => e.t >= start)
+  const isLocal = e => !/^cloud/.test(e.text || '')
+  let from = before ? start : inside.length ? inside[0].t : start
+  let local = before ? isLocal(before) : inside.length ? isLocal(inside[0]) : applied.kind !== 'cloud'
+  if (!before && !inside.length && !applied.kind) return null
+  let on = 0, cloud = 0
+  for (const e of inside) {
+    if (e.t > from) { (local ? (on += e.t - from) : (cloud += e.t - from)) }
+    from = Math.max(from, e.t); local = isLocal(e)
+  }
+  local ? (on += now - from) : (cloud += now - from)
+  return on + cloud > 0 ? { pct: Math.round((on / (on + cloud)) * 100), cloud } : null
+}
+
+function span(sec) {
+  return sec < 3600 ? `${Math.max(1, Math.round(sec / 60))} min` : `${(sec / 3600).toFixed(sec < 36000 ? 1 : 0)} h`
+}
+
+function RecStats({ events, now, applied }) {
   const day = events.filter(e => (e.t || 0) >= now - DAY_S)
   const routes = day.filter(e => e.kind === 'route').length
   const down = day.filter(e => e.kind === 'health' && /went down/.test(e.text || ''))
-  const sim = day.filter(e => SIM_KINDS.has(e.kind)).length
+  const share = localShare(events, now, applied || {})
   const served = events.filter(e => e.kind === 'served').slice(-1)[0]
   const tile = (tone, label, value, sub) => jsxs('div', { className: 'hs-stat', children: [
     jsx('b', { 'data-tone': tone || undefined, children: value }), jsx('span', { children: label }), jsx('span', { title: sub, children: sub })] }, label)
   return jsx('div', { className: 'hs-rec-stats', children: [
     tile(null, 'Route changes (24 h)', routes, routes ? 'set by Local Fleet' : 'Hermes stayed put'),
     tile(down.length ? 'bad' : null, 'Real outages (24 h)', down.length, down.length ? `last ${clock(down[down.length - 1].t)}` : 'none'),
-    tile(sim ? 'sim' : null, 'Rehearsal events (24 h)', sim, sim ? 'simulated, nothing stopped' : 'none'),
+    tile(share && share.pct === 100 ? 'good' : share && share.pct < 50 ? 'sim' : null, 'Time on your boxes (24 h)',
+      share ? `${share.pct}%` : 'n/a', share ? (share.cloud ? `cloud for ${span(share.cloud)}` : 'no time on cloud') : 'not routed by Local Fleet'),
     tile('served', 'Last served', served ? ago(new Date(served.t * 1000).toISOString()) : 'n/a', served ? served.text : 'no calls seen yet')] })
 }
 
@@ -1023,7 +1054,28 @@ function Tape({ events, now }) {
       jsx('span', { children: '12 h' }), jsx('span', { children: '6 h' }), jsx('span', { children: 'now' })] })] })
 }
 
-function Recorder({ events }) {
+const PACK_MENU = [
+  ['local-a-down', 'Local A down', 'The box Hermes is on drops out for 10 min; Hermes moves to the next one'],
+  ['force-cloud-hop', 'Force cloud hop', 'Every box drops out for 10 min; Hermes moves to your cloud backup'],
+  ['recover-drift', 'Recover + drift', 'End these rehearsals, let Hermes come back, then check its config for drift']]
+
+// The rehearsal packs, kept in one menu: they are demo and drill tools, not part of the everyday record.
+function RehearseMenu({ s, run, disabled }) {
+  const [open, setOpen] = useState(false)
+  const active = Object.values(s.exclusions || {}).filter(x => x && x.pack).length
+  const pick = body => { setOpen(false); run('pack', '/pack', body) }
+  return jsxs(Popover, { open, onOpenChange: setOpen, children: [
+    jsx(PopoverTrigger, { asChild: true, children: jsx(Button, { size: 'sm', variant: 'outline', disabled,
+      children: active ? `Rehearsing (${active}) ▾` : 'Rehearse ▾' }) }),
+    jsxs(PopoverContent, { side: 'bottom', align: 'end', className: 'hs-rehearse', 'aria-label': 'Rehearse', children: [
+      jsx('small', { className: 'hs-rehearse-note', children: 'Simulations inside Local Fleet: nothing is stopped on any box, but Hermes really switches while one runs.' }),
+      ...PACK_MENU.map(([k, label, desc]) => jsxs('button', { type: 'button', onClick: () => pick({ name: k }),
+        children: [label, jsx('small', { children: desc })] }, k)),
+      active ? jsxs('button', { type: 'button', onClick: () => pick({ end: true }),
+        children: ['End packs', jsx('small', { children: `Clear the ${active} rehearsal(s) the packs started; yours stay` })] }, 'end') : null] })] })
+}
+
+function Recorder({ events, applied }) {
   const [filter, setFilter] = useState('all')
   const [more, setMore] = useState(false)
   const all = events || []
@@ -1038,9 +1090,9 @@ function Recorder({ events }) {
     groups[groups.length - 1].items.push(e)
   }
   return jsxs('div', { children: [
-    jsx(RecStats, { events: all, now }),
+    jsx(RecStats, { events: all, now, applied }),
     jsx(Tape, { events: all, now }),
-    jsx('div', { className: 'hs-rec-filters', role: 'radiogroup', 'aria-label': 'Show', children: REC_FILTERS.map(([k, label]) =>
+    jsx('div', { className: 'hs-rec-filters', role: 'radiogroup', 'aria-label': 'Show', children: REC_FILTERS.filter(([k]) => k !== 'sim' || filter === 'sim' || all.some(e => evGroup(e) === 'sim')).map(([k, label]) =>
       jsxs('button', { type: 'button', role: 'radio', 'aria-checked': filter === k,
         onClick: () => setFilter(k), children: [label, jsx('i', { children: k === 'all' ? all.length : all.filter(e => evGroup(e) === k).length })] }, k)) }),
     rows.length ? groups.map(g => jsxs('div', { children: [
@@ -1324,15 +1376,10 @@ function FleetPage({ ctx }) {
       jsxs('div', { className: 'hs-rec-head', children: [
         jsxs('div', { className: 'hs-rec-title', children: [jsx('b', { children: 'Flight recorder' }),
           jsx('small', { children: 'Configured is what Local Fleet set; served is what actually answered. Rehearsals are simulations.' })] }),
-        jsx('span', { className: 'hs-page-hint', title: 'Simulations inside Local Fleet: nothing is stopped on any box', children: 'Rehearse (simulated):' }),
-        ...[['local-a-down', 'Local A down'], ['force-cloud-hop', 'Force cloud hop'], ['recover-drift', 'Recover + drift']].map(([k, label]) =>
-          jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy || demo),
-            title: 'Simulation inside Local Fleet: nothing is stopped on any box', onClick: () => run('pack', '/pack', { name: k }), children: label }, k)),
-        jsx(Button, { size: 'sm', variant: 'outline', disabled: Boolean(busy || demo), title: 'End the rehearsals the packs started (yours stay)',
-          onClick: () => run('pack', '/pack', { end: true }), children: 'End packs' }),
+        jsx(RehearseMenu, { s, run, disabled: Boolean(busy || demo) }),
         jsx(Button, { size: 'sm', variant: 'outline', title: 'The last 24 h as Markdown for chat or Notion, addresses removed',
           onClick: () => copyFrom('/incident?hours=24', 'Incident card'), children: 'Copy incident card' })] }),
-      jsx('div', { className: 'hs-rec-body', children: jsx(Recorder, { events: s.events }) })] }),
+      jsx('div', { className: 'hs-rec-body', children: jsx(Recorder, { events: s.events, applied: s.applied }) })] }),
     drawer && drawer.kind === 'why' && jsx(Drawer, { title: 'Why this box?', onClose: () => setDrawer(null),
       children: jsx(WhyPanel, { s, focus: drawer.node, busy: busy === 'why', onRecheck: () => run('why', '/why') }) }),
     drawer && drawer.kind === 'doctor' && jsx(Drawer, { title: 'Fleet doctor', onClose: () => setDrawer(null),
