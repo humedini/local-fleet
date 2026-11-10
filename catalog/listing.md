@@ -36,7 +36,7 @@ Adds `plugin-catalog/local-fleet.yaml`, a community plugin (repo: humedini/local
 - Files: `fleet.json`, `state.json`, `events.jsonl` (addresses masked before storing), `traffic.jsonl` (per call: endpoint, model, tokens, duration; no content) in its plugin data dir.
 - Background: a non-blocking probe on session start, at most once per `probe_interval_s`; observer hooks append one line per model call; `hermes fleet watch` is foreground and user-started.
 - Private inference scope: Hermes's model routing only (primary, fallback chain, side tasks, subagents on the `fleet` backend); reported as not in force when anything it does not own points at cloud. Not air-gapping: tools still use the internet.
-- Private core import (rule 9): `pricing.py` imports `agent.usage_pricing.get_pricing_entry` for the price lookup, the only undocumented Hermes surface it uses. It is guarded: if the import or call fails, the price is reported as unavailable and a price set with `hermes fleet price` still works. Validated against Hermes 0.22.7 and 0.23.0.
+- Private core import (rule 9): `pricing.py` imports `agent.usage_pricing.get_pricing_entry` for the price lookup, the only undocumented Hermes surface it uses. It is guarded: if the import or call fails, the price is reported as unavailable and a price set with `hermes fleet price` still works. Validated against Hermes 0.22.7, 0.23.0 and 0.23.1.
 - Credentials: none stored; optional per-node keys by env var name via `agent.secret_scope.get_secret`.
 
 **Checks.** CI runs the unit tests on Python 3.11-3.14 and `hermes plugins validate` + `hermes plugins doctor --ci` against a pinned Hermes.
