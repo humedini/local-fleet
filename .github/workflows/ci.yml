@@ -43,6 +43,8 @@ jobs:
             ref: b200f5bc60e31588ba2cb60e288029c4a54ba5fa
           - hermes: "0.23.0"   # The Hearth Release (2026-11-05)
             ref: 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19
+          - hermes: "0.23.1"   # current release when submitted to the catalog
+            ref: 3b421578588243f920886e6fe79a6faa87ea026e
     name: hermes ${{ matrix.hermes }}
     env:
       HERMES_REF: ${{ matrix.ref }}

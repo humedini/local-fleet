@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-11-10)
 
-- Works with Hermes 0.23.0 (The Hearth Release). CI now runs Hermes's `plugins validate` and `plugins doctor` against 0.22.7 and 0.23.0; no code changes were needed.
+- Works with Hermes 0.23.0 (The Hearth Release) and 0.23.1. CI now runs Hermes's `plugins validate` and `plugins doctor` against 0.22.7, 0.23.0 and 0.23.1; no code changes were needed.
+- Catalog banner (`docs/img/banner.png`, 1200x600).
 - Disclosed the one undocumented Hermes import (`agent.usage_pricing.get_pricing_entry`, flagged by validate under catalog rule 9) in the README and the catalog listing. It is guarded: if it moves, savings shows "unavailable" and `hermes fleet price` still works.
 - Flight recorder redesigned as its own panel: 24-hour tiles (route changes, real outages, time on your boxes, last served), a 24-hour strip with a tick per event, a filter switch (configured, served, health, simulated) with counts, and each event in its own box with a diamond marker coloured by meaning (a box coming back is green, going down is red), grouped by day with clock times. Rehearsals have dashed outlines. Shows 12 events, or up to 120 with *Show all*. The rehearsal packs moved into one *Rehearse* menu, with what each does; *End packs* appears only while a pack's rehearsal runs, and the Simulated filter only when there are simulated events.
 
