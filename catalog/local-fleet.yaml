@@ -18,7 +18,7 @@ description: 'Your local inference fleet, operated from Hermes Desktop: routing 
 maintainer: humedini
 tier: community
 category: models
-version: "0.3.0"
+version: "0.3.1"
 requires_hermes: ">=0.22"
 docs_url: https://github.com/humedini/local-fleet#readme
 readme: true
