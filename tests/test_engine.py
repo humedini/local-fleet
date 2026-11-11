@@ -1,5 +1,6 @@
 """Probe -> decide -> write config, end to end against a fake Hermes config and mocked boxes."""
 import copy
+import re
 import json
 import sys
 import types
@@ -32,8 +33,20 @@ def hermes(tmp_path, monkeypatch):
             cfg.clear()
             cfg.update(copy.deepcopy(c))
 
+    env = {}
+
+    def expand(o):  # Hermes's load_config expands ${VAR}; read_raw_config does not
+        if isinstance(o, str):
+            return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", lambda m: env.get(m.group(1), m.group(0)), o)
+        if isinstance(o, dict):
+            return {k: expand(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [expand(v) for v in o]
+        return o
+
     conf = types.ModuleType("hermes_cli.config")
-    conf.load_config = lambda: copy.deepcopy(cfg)
+    conf.load_config = lambda: expand(copy.deepcopy(cfg))
+    conf.read_raw_config = lambda: copy.deepcopy(cfg)
     conf.load_config_readonly = lambda: cfg
     conf.save_config = save_config
     storage = types.ModuleType("plugins.plugin_storage")
@@ -47,7 +60,7 @@ def hermes(tmp_path, monkeypatch):
     f = store.fleet()
     f.add("gx10", "http://gx:11434/v1")
     f.add("spark2", "http://s2:11434/v1")
-    return types.SimpleNamespace(cfg=cfg, writes=writes)
+    return types.SimpleNamespace(cfg=cfg, writes=writes, env=env)
 
 
 def boxes(gx=True, s2=True, gx_load=(), s2_load=("gemma",)):

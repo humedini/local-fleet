@@ -98,10 +98,12 @@ It does not flip-flop. The box Hermes is on is kept while it is up, unless anoth
 
 Only these keys, through Hermes's own config writer (comments and formatting are kept):
 
-- `model.provider`, `model.default`, `model.base_url`, `model.api_mode`, `model.key_env` — the primary. Local box: `provider: custom` with the box's base URL. Cloud: your `cloud_provider` and `cloud_model`. Other `model:` keys such as `context_length` are left alone.
+- `model.provider`, `model.default`, `model.base_url`, `model.api_mode`, `model.key_env`, `model.api_key_env` — the primary. Local box: `provider: custom` with the box's base URL. Cloud: your `cloud_provider` and `cloud_model`. Other `model:` keys such as `context_length` are left alone.
 - `fallback_providers` — your cloud target is appended once if it is not already there.
 
 The first time it changes the primary it saves what you had. `hermes fleet restore` puts it back.
+
+It never moves a primary that holds an inline API key (`model.api_key` or `model.api`). Hermes prefers an inline key to `key_env`, so the key would follow the primary to your box. Local Fleet leaves that primary alone and says so in `status` and the doctor. Put the key in `~/.hermes/.env` and name it with `model.key_env` instead. Nothing Local Fleet saves (the original primary, fallback entries taken off by private inference, side-task blocks) ever holds a key: `${VAR}` references are kept as references, and an entry with a literal key is left where it is.
 
 ### Coordinating with `fallback_providers`
 
@@ -278,7 +280,7 @@ In chat: `/fleet`, `/fleet list`, `/fleet mode auto`, `/fleet use best`, `/fleet
 
 - `fleet_status` — probe the fleet and report health, load, models and the route. Read-only.
 - `fleet_list_nodes` — the registry with last health, no probing. Read-only.
-- `fleet_pull_model` — pull a model onto one **Ollama** box through Ollama's pull API. The tool description asks the agent to confirm first.
+- `fleet_pull_model` — pull a model onto one **Ollama** box through Ollama's pull API. Hermes asks you to approve every pull (a `pre_tool_call` hook), and only tags from Ollama's own library are accepted: a registry host such as `example.com/x/model` is refused.
 
 The tools are hidden until at least one box is registered. There is no tool that runs commands on a box, and there never will be.
 
@@ -306,7 +308,7 @@ The key is read with Hermes's secret resolver when that box is probed or used an
 
 - **Network**: HTTP requests go only to the base URLs you register (`/models`, plus `/api/ps` for Ollama or `/metrics` for vLLM), a 64-token generation per box for speed benches (`/api/generate` or `/chat/completions`), Ollama's `/api/show` for each of your models on each box at most hourly (readiness), and Ollama's `/api/pull` when the agent uses `fleet_pull_model`. The cloud price comes from Hermes's own rate-card lookup (`agent.usage_pricing`; it may fetch the OpenRouter models API or models.dev, cached by Hermes), at most daily and only when you have not set a price. Nothing else, no telemetry.
 - **Files**: reads and writes `fleet.json`, `state.json`, `events.jsonl` (the flight recorder, last 400 events; addresses are masked before they are stored) and `traffic.jsonl` (per call: endpoint, model, token counts, duration; no content) in its own plugin data directory.
-- **Config writes**: `model.provider`, `model.default`, `model.base_url`, `model.api_mode`, `model.key_env` (the original primary is saved; `restore` puts it back); one appended `fallback_providers` entry for your cloud model; on request `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` `provider`, `model`, `base_url`, `fallback_chain` (`aux on/off`; the previous blocks come back on off, and a task holding its own `api_key` is never taken over); with `private on`, removal of non-local `fallback_providers` entries (put back on off), `delegation.backend: fleet` (previous backend put back on off) and side tasks without a cloud `fallback_chain`. Its own settings live under `plugins.entries.local-fleet.settings`.
+- **Config writes**: `model.provider`, `model.default`, `model.base_url`, `model.api_mode`, `model.key_env`, `model.api_key_env` (the original primary is saved; `restore` puts it back); one appended `fallback_providers` entry for your cloud model; on request `delegation.backend` (`delegate on/off`) and `auxiliary.<task>` `provider`, `model`, `base_url`, `fallback_chain` (`aux on/off`; the previous blocks come back on off, and a task holding its own `api_key` is never taken over); with `private on`, removal of non-local `fallback_providers` entries (put back on off), `delegation.backend: fleet` (previous backend put back on off) and side tasks without a cloud `fallback_chain`. Its own settings live under `plugins.entries.local-fleet.settings`.
 - **Background work**: a short background probe when a session starts (at most once per `probe_interval_s`), with a speed bench when one is due. `hermes fleet watch` runs only when you start it. Observer hooks (`post_api_request`, `api_request_error`, `post_auxiliary_call`) append one line per call; `on_session_start` runs the background probe.
 - **Privacy setting** (`hermes fleet privacy on`): every output path (CLI text and JSON, `/fleet`, the agent tools, the Desktop backend's responses and errors, the snapshot export) drops address fields and masks URLs, IP addresses, host:port, LAN and tailnet names and the boxes' own hosts in any text, probe errors included.
 - **Credentials**: none stored. Optional per-box keys are read by env var name through Hermes's secret resolver.

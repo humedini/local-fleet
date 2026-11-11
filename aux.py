@@ -36,7 +36,9 @@ def current(cfg: dict, tasks) -> dict:
 def apply(tasks, blk: dict | None, saved: dict | None) -> dict:
     """Point `tasks` at `blk` (or restore `saved` when blk is None). Returns the blocks that were there."""
     cfg = config_write._load()
-    before = current(cfg, tasks)
+    # What is saved for `aux off` comes from config.yaml as written: `${VAR}` references stay
+    # references, never expanded keys in Local Fleet's data.
+    before = current(config_write.raw_config(), tasks)
     aux = dict(cfg.get("auxiliary") or {})
     for t in tasks:
         entry = dict(aux.get(t) or {})

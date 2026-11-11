@@ -13,12 +13,13 @@ description: 'Your local inference fleet, operated from Hermes Desktop: routing 
   subagents held to your boxes, failing rather than using cloud; not air-gapping). Writes model.*, fallback_providers,
   and on request delegation.backend and auxiliary.<task>; private on removes non-local fallback entries and puts them
   back on off; hermes fleet restore puts the primary back. Network: HTTP only to the boxes you register. Observer hooks
-  record per-call endpoint, model, tokens and duration (never content) in its data dir. Read-only tools plus an
-  Ollama-only model pull; no remote command execution.'
+  record per-call endpoint, model, tokens and duration (never content) in its data dir. Never moves a primary that
+  holds an inline API key and never copies a key into its data. Read-only tools plus a model pull from the Ollama
+  library that Hermes asks you to approve; no remote command execution.'
 maintainer: humedini
 tier: community
 category: models
-version: "0.3.1"
+version: "0.3.2"
 requires_hermes: ">=0.22"
 docs_url: https://github.com/humedini/local-fleet#readme
 readme: true
@@ -33,6 +34,6 @@ screenshots:
 platforms: []
 capabilities:
   provides_tools: [fleet_status, fleet_list_nodes, fleet_pull_model]
-  provides_hooks: [on_session_start, post_api_request, api_request_error, post_auxiliary_call]
+  provides_hooks: [on_session_start, pre_tool_call, post_api_request, api_request_error, post_auxiliary_call]
   provides_middleware: []
   requires_env: []

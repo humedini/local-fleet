@@ -14,6 +14,25 @@ _TAG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}(:[A-Za-z0-9._-]{1,64})?$"
 PULL_TIMEOUT_S = 1800
 
 
+def valid_tag(model: str) -> bool:
+    """An Ollama library tag (`qwen3:14b`, `namespace/model:tag`). A first path segment with `.` or `:`
+    names a registry host, so it is refused: a pull only ever comes from Ollama's own library."""
+    if not _TAG.match(model):
+        return False
+    first, _, rest = model.partition("/")
+    return not (rest and ("." in first or ":" in first))
+
+
+def pull_approval(tool_name: str = "", args: dict | None = None, **kwargs):
+    """pre_tool_call hook: every fleet_pull_model call goes to Hermes's human-approval gate first,
+    because a pull can put tens of GB on a box. Other tools are not touched."""
+    if tool_name != "fleet_pull_model":
+        return None
+    a = args if isinstance(args, dict) else {}
+    model, node = str(a.get("model", "")).strip(), str(a.get("node", "")).strip()
+    return {"action": "approve", "message": f"Local Fleet: pull {model or '?'} onto {node or '?'}"}
+
+
 def _hide() -> bool:
     try:
         return bool(store.read_settings().get("hide_addresses"))
@@ -67,8 +86,8 @@ def fleet_pull_model(args: dict, **kwargs) -> str:
             return _err("unknown node; see fleet_list_nodes")
         if node.get("kind") != "ollama":
             return _err(f"{node['name']} is kind {node.get('kind')}; pulls are only for ollama nodes")
-        if not _TAG.match(model):
-            return _err("not an Ollama model tag")
+        if not valid_tag(model):
+            return _err("not an Ollama library tag (registry hosts are not allowed)")
         url = f"{origin(node['base_url'])}/api/pull"
         last = {}
         with httpx.Client(timeout=httpx.Timeout(PULL_TIMEOUT_S, connect=5)) as c:

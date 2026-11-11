@@ -265,6 +265,12 @@ def apply_policy(dry_run: bool = False, pin: str | None = None, unpin: bool = Fa
             return decision
         changed = decision["changed"]
         decision["applied"] = False
+        held = config_write.inline_credentials() if changed else []
+        if held:  # never move a primary that holds an inline key: the key would follow it to another host
+            decision["warning"] = config_write.inline_key_message(held)
+            if not dry_run and (state.get("last_decision") or {}).get("warning") != decision["warning"]:
+                events.record("refused", "the primary holds an inline API key, so Local Fleet did not move it")
+            changed = False
         if not dry_run and changed and target["kind"] == "local" and settings.get("warm_before_switch", True) and not rehearsing:
             snap = results.get(target["node_id"]) or {}
             decision["warm"] = warm(f.find(target["node_id"]), target.get("model", ""), snap.get("resident") or [],
@@ -334,8 +340,12 @@ def _refuse(settings, f, results, decision, state, dry_run, aux_follow) -> dict:
     avoided = f"{cp}/{cm}" if cp and cm else None
     decision["avoided_cloud"] = avoided
     was_refused = (state.get("last_decision") or {}).get("target", {}).get("kind") == "refused"
-    held = private.primary_is_local(config_write._load(), private.local_urls(f.nodes))
-    if not dry_run and not held and target.get("node_id"):
+    cfg = config_write._load()
+    held = private.primary_is_local(cfg, private.local_urls(f.nodes))
+    inline = config_write.inline_credentials(cfg)
+    if inline and not held:
+        decision["warning"] = f"{target['reason']}. {config_write.inline_key_message(inline)}"
+    if not dry_run and not held and not inline and target.get("node_id"):
         node = f.find(target["node_id"])
         before = config_write.set_primary(config_write.model_block(target, node))
         state.setdefault("original_model", before)
@@ -370,8 +380,12 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
         return "side tasks changed outside Local Fleet: paused (reapply or relinquish)"
     # A task holding a literal api_key is the user's own secret: leave it alone, so the key is never
     # copied into Local Fleet's state (aux_original) and never travels to another host.
-    aux_cfg = (config_write._load().get("auxiliary") or {})
-    keyed = [t for t in tasks if (aux_cfg.get(t) or {}).get("api_key") and t not in ((current or {}).get("tasks") or [])]
+    # Also a task whose blocks hold any literal secret (its fallback_chain included): read from
+    # config.yaml as written, so `${VAR}` references are not mistaken for literals.
+    aux_cfg = (config_write.raw_config().get("auxiliary") or {})
+    keyed = [t for t in tasks if t not in ((current or {}).get("tasks") or [])
+             and (config_write.inline_credentials({"model": aux_cfg.get(t)})
+                  or config_write.secret_fields(aux_cfg.get(t)))]
     tasks = [t for t in tasks if t not in keyed]
     note = f" (left {', '.join(keyed)} alone: it has its own API key)" if keyed else ""
     if not tasks:
@@ -498,19 +512,27 @@ def set_private(on: bool) -> str:
     with store.transaction():
         state = store.load_state()
         if on:
-            removed = config_write.remove_non_local_fallbacks(urls)
-            kept = state.get("private_removed") or []
+            removed, left = config_write.remove_non_local_fallbacks(urls)
+            # Only entries without a literal secret are kept here (`${VAR}` references stay references).
+            # State from 0.3.x may hold one: it goes back on fallback_providers and out of plugin data.
+            old = state.get("private_removed") or []
+            legacy = [e for e in old if config_write.secret_fields(e)]
+            if legacy:
+                config_write.restore_fallbacks(legacy)
+                notes.append(f"{len(legacy)} keyed fallback entr{'y' if len(legacy) == 1 else 'ies'} put back from older plugin data")
+            kept = [e for e in old if e not in legacy]
             state["private_removed"] = kept + [e for e in removed if e not in kept]
             if removed:
                 notes.append(f"{len(removed)} cloud fallback entr{'y' if len(removed) == 1 else 'ies'} taken off (restored when off)")
+            if left:
+                notes.append("left in place because they hold an API key: " + ", ".join(left))
             backend = store.delegation_backend()
             if backend != "fleet":
                 state.setdefault("private_prev_delegation", backend)
                 store.set_delegation_backend("fleet")
                 notes.append(f"subagents moved from the {backend} backend to fleet")
         else:
-            back = state.pop("private_removed", None) or []
-            config_write.restore_fallbacks(back)
+            back = config_write.restore_fallbacks(state.pop("private_removed", None) or [])
             if back:
                 notes.append(f"{len(back)} fallback entr{'y' if len(back) == 1 else 'ies'} restored")
             prev = state.pop("private_prev_delegation", None)
@@ -570,7 +592,7 @@ def restore() -> dict | None:
         original = state.get("original_model")
         if original is None:
             return None
-        config_write.set_primary(original)
+        config_write.set_primary(original, allow_inline_key=True)
         state.pop("applied", None)
         state.pop("original_model", None)
         state["last_decision"] = {"at": now_iso(), "reason": "restored the original primary"}

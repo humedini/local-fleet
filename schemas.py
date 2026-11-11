@@ -22,8 +22,9 @@ FLEET_PULL_MODEL = {
     "name": "fleet_pull_model",
     "description": (
         "Download a model onto one Ollama node of the fleet (Ollama's own pull API). Only for "
-        "nodes of kind 'ollama'. Large models take many minutes and tens of GB; confirm with the "
-        "user before pulling. Returns when the pull finishes or times out."),
+        "nodes of kind 'ollama', and only tags from Ollama's own library (no registry hosts). Hermes "
+        "asks the user to approve each pull, since large models take many minutes and tens of GB. "
+        "Returns when the pull finishes or times out."),
     "parameters": {
         "type": "object",
         "properties": {

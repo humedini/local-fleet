@@ -5,6 +5,7 @@ runs, and settings are read when a command or tool actually runs).
 """
 from __future__ import annotations
 
+import contextvars
 import threading
 from pathlib import Path
 
@@ -36,7 +37,10 @@ def _refresh_on_session_start(**kwargs) -> None:
         finally:
             _bg.release()
 
-    threading.Thread(target=run, name="local-fleet-refresh", daemon=True).start()
+    # Hermes keeps the active profile in a context variable: carry it into the thread, so a gateway
+    # serving several profiles refreshes (and writes) the session's profile, not the launch one.
+    threading.Thread(target=contextvars.copy_context().run, args=(run,), name="local-fleet-refresh",
+                     daemon=True).start()
 
 
 def register(ctx):
@@ -54,6 +58,7 @@ def register(ctx):
                              description="Fleet registry, health probes, freest-box routing, "
                                          "cloud failover and failback.")
     ctx.register_hook("on_session_start", _refresh_on_session_start)
+    ctx.register_hook("pre_tool_call", tools.pull_approval)  # pulls need a human's yes
     # Real-traffic stats: endpoint, tokens and duration of each call (never its content).
     ctx.register_hook("post_api_request", traffic.on_post_api_request)
     ctx.register_hook("api_request_error", traffic.on_api_request_error)

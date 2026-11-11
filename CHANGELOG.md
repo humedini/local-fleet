@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 (2026-11-11)
+
+Fixes from the plugin catalog review (NousResearch/hermes-agent#152948):
+
+- A primary that holds an inline API key (`model.api_key`, `model.api`, `model.key_cmd`) is never routed. Hermes ranks an inline key ahead of `key_env`, so moving that primary would send the key to a box. Local Fleet leaves it as it is and says so in `status`, the doctor and the Desktop: move the key to `~/.hermes/.env` and name it with `model.key_env`. `model.api_key_env` is now cleared on a box and put back by `restore`, like `key_env`.
+- Private inference keeps `${VAR}` references as references. Fallback entries and side-task blocks are saved from `config.yaml` as written, not from the expanded config, so no key is ever copied into Local Fleet's data or written back to `config.yaml` as a literal. A cloud entry that holds a literal key is left in place and private inference reports "not in force". Plugin data from 0.3.x that holds such an entry puts it back on `fallback_providers` the next time private inference is turned on.
+- `fleet_pull_model` goes through Hermes's approval gate (a `pre_tool_call` hook) on every call, and only accepts tags from Ollama's own library: a first path segment with `.` or `:` (a registry host) is refused.
+- The session-start refresh thread runs in the session's context, so a gateway serving several profiles refreshes the right profile's config.
+
 ## 0.3.1 (2026-11-10)
 
 - Works with Hermes 0.23.0 (The Hearth Release) and 0.23.1. CI now runs Hermes's `plugins validate` and `plugins doctor` against 0.22.7, 0.23.0 and 0.23.1; no code changes were needed.

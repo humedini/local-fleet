@@ -122,6 +122,15 @@ def checks() -> list[dict]:
                           st["scope"] if st["in_force"] else "; ".join(f"{p['what']}: {p['detail']}" for p in st["problems"]),
                           None if st["in_force"] else {"command": "hermes fleet private on   (re-applies what Local Fleet owns; "
                                                                   "fix the rest in config.yaml)"}))
+    held = config_write.inline_credentials()
+    if held:
+        out.append(_check("inline-key", "warn", "Hermes's primary holds an inline API key, so Local Fleet will not move it",
+                          config_write.inline_key_message(held), {"command": "hermes config edit"}))
+    if any(config_write.secret_fields(e) for e in state.get("private_removed") or []):
+        out.append(_check("old-private-key", "warn", "Local Fleet's state holds a fallback entry with an API key from an older version",
+                          "Saved by private inference before keys were left in place. Turning private inference on or off "
+                          "puts it back on fallback_providers and drops it from Local Fleet's state.",
+                          {"command": "hermes fleet private on"}))
     if any((b or {}).get("api_key") for b in (state.get("aux_original") or {}).values() if isinstance(b, dict)):
         out.append(_check("old-key", "warn", "Local Fleet's state holds a side-task API key from an older version",
                           "Saved when side tasks were first moved, before keys were left alone. Turning side tasks off "
