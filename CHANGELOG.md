@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 (2026-11-12)
+
+- Routing uses each box's best speed on the model in the last week, not its latest bench. A bench taken while something else used the GPU (ComfyUI on a DGX Spark, a training run) reads low, and Local Fleet only sees a box's inference server, never its GPU, so that reading used to stand as the box's speed until the next bench. A bench below 60% of the best is now flagged in `bench`, `status` and the Desktop as "GPU busy?", and speeds older than a week stop counting.
+
 ## 0.3.2 (2026-11-11)
 
 Fixes from the plugin catalog review (NousResearch/hermes-agent#152948):

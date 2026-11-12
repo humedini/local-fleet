@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .constants import FLEET_FILE, KINDS, OSES, VENDORS
+from .constants import FLEET_FILE, KINDS, OSES, SLOW_RATIO, SPEED_WINDOW_S, VENDORS
 from .locking import locked
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -23,6 +23,27 @@ _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 class FleetError(ValueError):
     """A user-facing problem with a fleet change (bad URL, duplicate, unknown node)."""
+
+
+def _age_s(iso: str | None) -> float:
+    """Seconds since an ISO time; 0 when unknown (figures written before times were kept still count)."""
+    if not iso:
+        return 0.0
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(iso)).total_seconds()
+
+
+def routing_speed(node: dict, want: str = "") -> float | None:
+    """Tokens/s the box can do on `want`: its best bench on that model in the last SPEED_WINDOW_S.
+    None when there is no such bench (speeds of different models are not comparable)."""
+    if not want:
+        return None
+    best = (node.get("perf_best") or {}).get(want)
+    perf = node.get("perf") or {}
+    if not best and perf.get("model") == want:
+        best = perf  # boxes benched before best speeds were kept
+    if not best or not best.get("tps") or _age_s(best.get("at")) > SPEED_WINDOW_S:
+        return None
+    return best["tps"]
 
 
 def now_iso() -> str:
@@ -228,13 +249,22 @@ class Fleet:
         return node
 
     def _record_perf(self, results: dict[str, dict]) -> None:
-        """Store each bench result (keyed by node id); keep the last good speed when a run is skipped."""
+        """Store each bench result (keyed by node id); keep the last good speed when a run is skipped, and
+        the best speed per model (what routing uses), flagging a result well below it."""
         for n in self.nodes:
             r = results.get(n["id"])
             if r is None:
                 continue
             if r.get("tps"):
+                best = {m: b for m, b in (n.get("perf_best") or {}).items()
+                        if _age_s(b.get("at")) <= SPEED_WINDOW_S}
+                prev = best.get(r.get("model"))
+                if prev and r["tps"] < SLOW_RATIO * prev["tps"]:
+                    r["below_best"] = prev["tps"]  # the result the caller prints carries it too
+                if not prev or r["tps"] >= prev["tps"]:
+                    best[r.get("model")] = {k: r[k] for k in ("tps", "model", "at") if k in r}
                 n["perf"] = r
+                n["perf_best"] = best
             else:
                 n["perf_note"] = r
 

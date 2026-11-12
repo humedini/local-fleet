@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .fleet import now_iso
+from .fleet import now_iso, routing_speed
 from .health import routable, score
 from .readiness import DEFAULT_MIN_CONTEXT, verdict
 
@@ -203,12 +203,11 @@ def _candidates(nodes, results, verdicts, labels, want, target, freest) -> list[
     for n in nodes:
         snap = results.get(n["id"]) or {}
         eligible, reason = verdicts[n["id"]]
-        perf = n.get("perf") or {}
         out.append({
             "id": n["id"], "name": n["name"], "title": n.get("title"), "eligible": eligible, "reason": reason,
             "status": snap.get("status"), "load": snap.get("load_proxy"), "latency_ms": snap.get("latency_ms"),
             "free_bytes": snap.get("free_vram_approx"), "checked_at": snap.get("checked_at"),
-            "tps": perf.get("tps") if perf.get("model") == want else None,
+            "tps": routing_speed(n, want),
             "chosen": target.get("kind") == "local" and target.get("node_id") == n["id"],
             "least_busy": bool(freest and freest["id"] == n["id"]),
             "score": list(score(n, snap, labels, want)[1:5]) if eligible else None,

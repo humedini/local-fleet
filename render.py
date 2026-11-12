@@ -9,7 +9,7 @@ import re
 def _load(h: dict, perf: dict | None = None) -> str:
     bits = []
     if perf and perf.get("tps"):
-        bits.append(f"{perf['tps']:g}t/s")
+        bits.append(f"{perf['tps']:g}t/s" + (f"(best {perf['below_best']:g})" if perf.get("below_best") else ""))
     if h.get("latency_ms") is not None:
         bits.append(f"{h['latency_ms']}ms")
     if h.get("load_proxy") is not None:

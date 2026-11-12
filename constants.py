@@ -8,6 +8,13 @@ MODES = ("prefer-local", "prefer-cloud", "auto")
 VENDORS = ("nvidia", "apple", "amd", "intel", "other")
 OSES = ("linux", "macos", "windows")
 
+# A box's speed for routing is its best bench on that model within this window: a bench taken while
+# something else used the GPU (ComfyUI, a training run) reads low, and Local Fleet cannot see the GPU,
+# only the box's inference server. Older figures stop counting.
+SPEED_WINDOW_S = 7 * 86400
+# A bench below this share of the box's best is flagged as "the GPU may be busy with something else".
+SLOW_RATIO = 0.6
+
 DEFAULTS = {
     "mode": "auto",
     "cloud_provider": "openrouter",

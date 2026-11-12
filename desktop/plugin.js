@@ -831,7 +831,7 @@ function NodeCard({ n, s, ctx, run, busy, onWhy }) {
     ] }),
     jsxs('div', { className: 'hs-card-perf', children: [
       jsx('b', { children: (n.perf || {}).tps ? `${(n.perf || {}).tps}` : '—' }),
-      jsx('span', { children: (n.perf || {}).tps ? ` tok/s · ${(n.perf || {}).model}${(n.perf || {}).prompt_tps ? ` · prompt ${(n.perf || {}).prompt_tps} tok/s` : ''} · ${ago((n.perf || {}).at)}`
+      jsx('span', { children: (n.perf || {}).tps ? ` tok/s · ${(n.perf || {}).model}${(n.perf || {}).prompt_tps ? ` · prompt ${(n.perf || {}).prompt_tps} tok/s` : ''}${(n.perf || {}).below_best ? ` · best ${(n.perf || {}).below_best}, GPU busy?` : ''} · ${ago((n.perf || {}).at)}`
         : ` tok/s · ${((n.perf_note || {}).skipped) || 'not benched yet'}` })
     ] }),
     (() => {

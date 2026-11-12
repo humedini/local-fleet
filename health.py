@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .constants import PROBE_CONCURRENCY
-from .fleet import now_iso
+from .fleet import now_iso, routing_speed
 
 _METRIC = re.compile(r"^(vllm:[a-z_]+)(?:\{[^}]*\})?\s+([0-9.eE+-]+)$", re.M)
 
@@ -171,11 +171,9 @@ def routable(node: dict, snap: dict | None, want: str = "") -> bool:
 
 def score(node: dict, snap: dict, prefer_labels=(), want: str = "") -> tuple:
     """Lower is freer. Down nodes sort last; preferred labels, then faster boxes, win ties on
-    load. Speed counts only when it was benched on the model being routed (speeds of different
-    models are not comparable)."""
+    load. Speed is the box's best recent bench on the model being routed (fleet.routing_speed)."""
     load = snap.get("load_proxy")
-    perf = node.get("perf") or {}
-    tps = perf.get("tps") if want and perf.get("model") == want else None
+    tps = routing_speed(node, want)
     free = snap.get("free_vram_approx")
     lat = snap.get("latency_ms")
     affinity = 0 if set(prefer_labels) & set(node.get("labels", [])) else 1

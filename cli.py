@@ -377,6 +377,9 @@ def _dispatch(cmd: str, args) -> int:
             if r.get("tps"):
                 extra = f", prompt {r['prompt_tps']:g} tok/s" if r.get("prompt_tps") else ""
                 extra += f", first token {r['ttft_ms']} ms" if r.get("ttft_ms") else ""
+                if r.get("below_best"):
+                    extra += (f"; well below its best {r['below_best']:g} tok/s, so the GPU may be busy with "
+                              "something else (routing uses the best)")
                 print(f"  {n['name']:<12} {r['tps']:>6.1f} tok/s  {r['model']}{extra}")
             else:
                 print(f"  {n['name']:<12}  skipped: {r.get('skipped') or r.get('error')}")
