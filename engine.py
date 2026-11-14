@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import aux, config_write, events, pricing, private, readiness, store, traffic
 from .warm import warm
+from .constants import MISS_FLOOR_S
 from .fleet import now_iso
 from .bench import bench_node
 from .health import probe_all, routable, score
@@ -29,6 +30,26 @@ def _couple_clusters(f, results: dict) -> None:
             m["in_cluster"] = c["name"]
             if snap.get("load_proxy") is not None:
                 m["load_proxy"] = round(max(m.get("load_proxy") or 0.0, snap["load_proxy"]), 3)
+
+
+def _grace(f, results: dict, settings: dict) -> None:
+    """A box that was up and fails one probe is held as `degraded` on its last good snapshot (the
+    detail says so) until it has missed `down_after_misses` probes in a row, at least MISS_FLOOR_S
+    apart from the first. A Wi-Fi or tailnet blip then does not move Hermes and load a model on another
+    box; a real outage is still caught on the next probe. Requests Hermes sends meanwhile that fail go
+    to its own fallback_providers for that turn, as with any error."""
+    need = max(1, int(settings.get("down_after_misses") or 1))
+    for n in f.nodes:
+        snap, prev = results.get(n["id"]), n.get("last_health") or {}
+        if not snap or snap.get("status") != "down" or prev.get("status") not in ("ok", "degraded"):
+            continue
+        misses = int(prev.get("misses") or 0) + 1
+        since = prev.get("missed_since") or snap["checked_at"]
+        if misses >= need and (need == 1 or _age_s(since) >= MISS_FLOOR_S):
+            continue
+        results[n["id"]] = {**prev, "status": "degraded", "checked_at": snap["checked_at"], "misses": misses,
+                            "missed_since": since, "detail": f"missed {misses} check{'s' if misses > 1 else ''} "
+                                                            f"({snap.get('detail')}); counted down after {need}"}
 
 
 def _age_s(iso: str | None) -> float:
@@ -60,7 +81,9 @@ def _due_for_bench(f, settings: dict) -> list[dict]:
 def bench(refs: list[str] | None = None, load: bool = False) -> tuple[list[dict], dict]:
     """`hermes fleet bench`: probe, then bench the named nodes (all enabled ones by default)."""
     settings, f, results = probe()
-    nodes = [f.get(r) for r in refs] if refs else f.enabled()
+    # A box busy with other GPU work is benched only when named: the bench would read low and use
+    # memory the other work needs.
+    nodes = [f.get(r) for r in refs] if refs else [n for n in f.enabled() if not (results.get(n["id"]) or {}).get("busy")]
     return nodes, run_bench(f, results, settings, nodes, load)
 
 
@@ -71,9 +94,17 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     f = store.fleet()
     results = probe_all(f.enabled(), timeout=float(settings["probe_timeout_s"]),
                         want=[m for m in model_tiers(settings) if m])
+    _grace(f, results, settings)
     _couple_clusters(f, results)
     before = {n["id"]: (n.get("last_health") or {}).get("status") for n in f.nodes}
+    was_busy = {n["id"]: (n.get("last_health") or {}).get("busy") for n in f.nodes}
     f.record_health(results)
+    for n in f.nodes:
+        snap = results.get(n["id"]) or {}
+        if "busy" in snap and bool(snap["busy"]) != bool(was_busy.get(n["id"])):
+            label = n.get("title") or n["name"]
+            events.record("busy", f"{label} busy with other GPU work ({snap.get('busy_detail')}): left out of new selections"
+                          if snap["busy"] else f"{label} is free of other GPU work", box=n["name"], busy=bool(snap["busy"]))
     for n in f.nodes:
         was, now = before.get(n["id"]), (results.get(n["id"]) or {}).get("status")
         if now and was and (was in ("ok", "degraded")) != (now in ("ok", "degraded")):
@@ -87,7 +118,8 @@ def probe(settings: dict | None = None, auto_bench: bool = False):
     except Exception:
         pass  # readiness is evidence for display and routing; a failed check leaves it unknown
     if auto_bench:
-        run_bench(f, results, settings, _due_for_bench(f, settings))
+        run_bench(f, results, settings, [n for n in _due_for_bench(f, settings)
+                                         if not (results.get(n["id"]) or {}).get("busy")])
     refresh_price(settings)
     stamp = now_iso()
     with store.transaction():
@@ -437,10 +469,16 @@ def _keep_loaded(settings, f, results, before: dict, now: dict) -> str | None:
     when routing moves. Only Ollama boxes; never raises."""
     try:
         moved = before.get("kind") == "local" and (before.get("node_id"), before.get("model")) != (now.get("node_id"), now.get("model"))
+        old_snap = results.get(before.get("node_id")) or {}
+        # Moved off a box because other GPU work started there: unload Hermes's model now (only if it is
+        # in memory: a keep_alive request for a model that is not loaded would load it) so that work
+        # gets the memory, instead of waiting out Ollama's idle timer.
+        freeing = moved and old_snap.get("busy") and before.get("model") in (old_snap.get("resident") or [])
         if moved or (before and not settings.get("keep_loaded")):
             old = f.find(before.get("node_id") or "")
-            if old is not None and before.get("model") and before.get("kept"):
-                warm(old, before["model"], [before["model"]], timeout=10, keep_alive=RELEASE, refresh=True)
+            if old is not None and before.get("model") and (before.get("kept") or freeing):
+                warm(old, before["model"], [before["model"]], timeout=10, keep_alive=0 if freeing else RELEASE,
+                     refresh=True)
         if not settings.get("keep_loaded") or now.get("kind") != "local":
             now.pop("kept", None)
             return None

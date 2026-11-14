@@ -240,6 +240,8 @@ class Fleet:
             node["title"] = _check_title(fields["title"])
         if fields.get("link") is not None:
             node["link"] = _check_link(fields["link"])
+        if fields.get("busy_urls") is not None:
+            node["busy_urls"] = _check_busy_urls(fields["busy_urls"])
         if fields.get("members") is not None:
             ids = self._member_ids(fields["members"])
             if node["id"] in ids:
@@ -297,6 +299,23 @@ def _check_link(link):
     if len(link) > 30:
         raise FleetError("--link is a short label such as '200 GbE'")
     return link or None
+
+
+def _check_busy_urls(urls):
+    """http(s) URLs of other work sharing the box's GPU (e.g. ComfyUI's /api/queue); [''] clears."""
+    out = []
+    for u in urls:
+        u = str(u or "").strip()
+        if not u:
+            continue
+        p = urlsplit(u)
+        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password:
+            raise FleetError(f"--busy-url must be an http(s) URL without credentials, e.g. "
+                             f"http://gx10:8188/api/queue (got {u!r})")
+        out.append(u)
+    if len(out) > 4:
+        raise FleetError("at most 4 --busy-url per box")
+    return out or None
 
 
 def display_name(node: dict) -> str:

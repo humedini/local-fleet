@@ -12,6 +12,13 @@ the latency. Kinds with a load signal add it:
   litellm, openai-compatible  latency only; a LiteLLM node is one gateway and balances itself.
 
 A node whose models answer but whose load endpoint fails is `degraded`, still routable.
+
+A node can also name `busy_urls`: other work sharing its GPU (a ComfyUI server on a DGX Spark, a
+training job) that the inference server cannot see. Each URL is fetched with the probe; a ComfyUI
+`/api/queue` with anything running or waiting, or any JSON `{"busy": true}`, marks the snapshot
+`busy`, and routing leaves the box out of new selections (routing.check) until it is free, so no model
+is loaded into memory the other work is using. A URL that does not answer counts as not busy (a server
+that is down runs nothing). No node credentials are sent to these URLs.
 """
 from __future__ import annotations
 
@@ -113,6 +120,31 @@ def _vllm_load(client, node, want):
 _LOAD = {"ollama": _ollama_load, "vllm": _vllm_load}
 
 
+BUSY_TIMEOUT_S = 5.0
+
+
+def _busy(client, node) -> tuple[bool, str]:
+    """(busy, what) from the node's `busy_urls`. Never raises."""
+    parts = []
+    for url in node.get("busy_urls") or []:
+        name = (urlsplit(url).hostname or url).split(".")[0]
+        try:
+            r = client.get(url, timeout=max(BUSY_TIMEOUT_S, client.timeout.read or 0))
+            r.raise_for_status()
+            d = r.json()
+        except (httpx.HTTPError, ValueError):
+            continue
+        if not isinstance(d, dict):
+            continue
+        if "queue_running" in d or "queue_pending" in d:  # ComfyUI /api/queue
+            running, waiting = len(d.get("queue_running") or []), len(d.get("queue_pending") or [])
+            if running or waiting:
+                parts.append(f"{name}: {running} running, {waiting} waiting")
+        elif d.get("busy"):
+            parts.append(str(d.get("detail") or f"{name}: busy")[:120])
+    return bool(parts), "; ".join(parts)
+
+
 def _detail(models: list[str], want) -> str:
     """'ok', or which tier the box serves when it lacks the main model. `want` is a model or a
     list of models in preference order."""
@@ -138,6 +170,13 @@ def probe_node(node: dict, client: httpx.Client, want="") -> dict:
         return _snapshot("down", None, f"{type(e).__name__}: {e}"[:120])
     latency = round((time.monotonic() - t0) * 1000)
     detail = _detail(models, want)
+    snap = _loaded(node, client, want, latency, detail, models)
+    if node.get("busy_urls"):
+        snap["busy"], snap["busy_detail"] = _busy(client, node)
+    return snap
+
+
+def _loaded(node, client, want, latency, detail, models) -> dict:
     loader = _LOAD.get(node.get("kind"))
     if loader is None:
         return _snapshot("ok", latency, detail, models)

@@ -95,6 +95,8 @@ def node_line(node: dict, active_id: str = "", freest_id: str = "") -> str:
     marks = ("  ← active" if node["id"] == active_id else "") + ("  (least busy)" if node["id"] == freest_id else "")
     detail = h.get("detail", "") if h.get("detail") not in (None, "ok") else ""
     detail = redact(detail.replace("ok · fallback ", "fallback · "))
+    if h.get("busy"):
+        detail = (detail + "  " if detail else "") + f"busy: {redact(h.get('busy_detail') or '')}"
     name = node["name"] + ("*" if node.get("members") else "")
     return (f"  {name:<12} {status:<9} {_load(h, perf):<30} {node['kind']:<17} {_url(node)}"
             f"{'  ' + detail if detail else ''}{marks}").rstrip()

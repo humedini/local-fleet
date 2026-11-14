@@ -94,6 +94,18 @@ Every box keeps its short handle for commands and can have a display name for th
 
 It does not flip-flop. The box Hermes is on is kept while it is up, unless another is clearly less busy (by more than `switch_margin`, default 0.25). `hermes fleet use gx10` keeps Hermes on that box while it is up; `use --best` or a mode change lets it choose again.
 
+One missed probe is not an outage. A box that was up and misses a probe (a Wi-Fi or tailnet blip) is shown as `degraded` ("missed 1 check") and keeps Hermes; it counts as down after `down_after_misses` misses in a row (default 2, so about a minute at the 30 s watch interval; 1 switches on the first miss). A turn that fails meanwhile goes to Hermes's own `fallback_providers` for that turn, as with any error.
+
+### Boxes that share their GPU
+
+Local Fleet sees a box's inference server, not its GPU. If something else uses the same memory (ComfyUI on a DGX Spark, a training run), tell Local Fleet where to ask:
+
+```bash
+hermes fleet set gx10 --busy-url http://gx10:8188/api/queue
+```
+
+Each probe also fetches the busy URLs (up to 4 per box, no box credentials sent). A ComfyUI `/api/queue` with a job running or waiting, or any URL that returns JSON `{"busy": true, "detail": "..."}`, marks the box busy: it is left out of new selections for the main route, subagents, side tasks and automatic benches, so no model is loaded into memory the other work is using. If Hermes is on the box when the work starts, it moves to the next box (or to cloud) and Hermes's model is unloaded from the busy box straight away instead of waiting out Ollama's idle timer. When the queue empties the box is eligible again. A busy URL that does not answer counts as not busy. A box you chose with `use` is also left while busy. `--busy-url ''` clears the list.
+
 ## What it changes in your Hermes config
 
 Only these keys, through Hermes's own config writer (comments and formatting are kept):

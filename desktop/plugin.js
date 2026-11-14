@@ -366,6 +366,7 @@ function NodeRow({ node, active, freest, want, s }) {
   else if (h.status === 'down') sub = h.detail || 'down'
   else if (!h.status) sub = 'not probed yet'
   else if (missing) sub = `skipped · has none of your models`
+  else if (h.busy) sub = `busy with other GPU work · ${h.busy_detail || ''}`
   else if (tier > 0) sub = `fallback · ${s.model_tiers[tier]}${(node.perf || {}).model === s.model_tiers[tier] && speed(node) ? ' · ' + speed(node) : ''}`
   else {
     const bits = [load === null ? 'load unknown' : load < 0.05 ? 'idle' : `${Math.round(load * 100)}% busy`]
@@ -825,6 +826,8 @@ function NodeCard({ n, s, ctx, run, busy, onWhy }) {
       ctx ? jsx(EditableName, { ctx, n }) : jsx('span', { children: dname(n) }),
       cluster && jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, children: `cluster · ${n.members.length} boxes${n.link ? ' · ' + n.link : ''}` }),
       ...parents.map(c => jsx('em', { className: 'hs-badge', style: { fontStyle: 'normal' }, title: 'Shares its memory with this cluster', children: `in ${dname(c)}` }, c.id)),
+      h.busy && jsx('em', { className: 'hs-badge', 'data-kind': 'ex', style: { fontStyle: 'normal' }, title: h.busy_detail || '',
+        children: 'busy · left out' }),
       (s.exclusions || {})[n.id] && jsx('em', { className: 'hs-badge', 'data-kind': 'ex', style: { fontStyle: 'normal' },
         children: (s.exclusions[n.id].kind === 'maintenance' ? 'maintenance' : 'rehearsal') }),
       jsx('span', { className: 'hs-lat', children: h.latency_ms != null ? `${h.latency_ms} ms` : '' })

@@ -74,6 +74,9 @@ def setup_argparse(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--title", help="display name shown in Desktop ('' clears it)")
     p.add_argument("--members", help="cluster members, comma list")
     p.add_argument("--link", help="cluster interconnect label")
+    p.add_argument("--busy-url", dest="busy_url", action="append",
+                   help="other work sharing this box's GPU, e.g. a ComfyUI http://host:8188/api/queue: while it has "
+                        "jobs the box is left out of new selections. Replaces the list; repeatable; '' clears")
     sub.add_parser("why", help="Why Hermes is routed where it is: every box's verdict and score")
     p = sub.add_parser("events", help="The flight recorder: health changes, routes, served endpoints, rehearsals")
     p.add_argument("-n", type=int, default=30)
@@ -407,13 +410,15 @@ def _dispatch(cmd: str, args) -> int:
     if cmd == "set":
         node = store.fleet().update(args.node, vendor=args.vendor, os=args.os_name, labels=args.label,
                                     capacity_gb=args.capacity_gb, memory_gb=args.memory_gb, title=args.title,
-                                    members=args.members.split(",") if args.members else None, link=args.link)
+                                    members=args.members.split(",") if args.members else None, link=args.link,
+                                    busy_urls=args.busy_url)
         from .fleet import platform
         p = platform(node)
         mem = f" title={node['title']!r}" if node.get("title") else ""
         mem += f" memory={node['memory_gb']:g}GB" if node.get("memory_gb") else ""
         ai = f" for-AI={node['capacity_gb']:g}GB" if node.get("capacity_gb") else ""
-        print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'}{mem}{ai} labels={','.join(node['labels']) or '-'}")
+        busy = f" busy-check={','.join(node['busy_urls'])}" if node.get("busy_urls") else ""
+        print(f"{node['name']}: vendor={p['vendor'] or '?'} os={p['os'] or '?'}{mem}{ai} labels={','.join(node['labels']) or '-'}{busy}")
         return 0
     if cmd == "why":
         print(render.why_text(engine.apply_policy(dry_run=True)))

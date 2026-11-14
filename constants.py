@@ -22,6 +22,10 @@ DEFAULTS = {
     "probe_timeout_s": 2.0,
     "probe_interval_s": 30.0,
     "failback_enabled": True,
+    # Consecutive failed probes before a box that was up counts as down (1 = the first failure). One
+    # missed probe (a Wi-Fi or tailnet blip) does not move Hermes; a box is also held for at least
+    # MISS_FLOOR_S after its first miss, so fast probing (the Desktop) cannot count two misses at once.
+    "down_after_misses": 2,
     "prefer_labels": [],
     "default_model": "",
     # Lower tiers, in order: used on boxes without default_model when no box has it.
@@ -55,6 +59,7 @@ DEFAULTS = {
     "currency": "USD",  # ISO 4217 code; the Desktop formats amounts in the viewer's locale
 }
 
+MISS_FLOOR_S = 15.0
 PROBE_CONCURRENCY = 8
 FLEET_FILE = "fleet.json"
 STATE_FILE = "state.json"

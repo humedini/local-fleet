@@ -1,5 +1,5 @@
 name: local-fleet
-version: 0.3.3
+version: 0.3.4
 manifest_version: 2
 api_version: 1
 description: Local inference fleet for Hermes (DGX Spark, Ollama, vLLM, LiteLLM) — health probes, freest-box routing, prefer-local / prefer-cloud / auto, cloud failover and failback, Desktop chip and /fleet
@@ -81,6 +81,11 @@ config_schema:
     type: bool
     default: true
     label: Fail back to local when a box recovers
+  down_after_misses:
+    type: int
+    default: 2
+    label: Missed probes before a box counts as down
+    description: A box that was up and misses one probe (a Wi-Fi or tailnet blip) keeps Hermes until it has missed this many in a row; 1 = switch on the first miss
   switch_margin:
     type: float
     default: 0.25

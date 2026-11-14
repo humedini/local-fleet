@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 (2026-11-14)
+
+- **Busy boxes.** `hermes fleet set <box> --busy-url URL` names other work sharing a box's GPU: a ComfyUI `/api/queue`, or any URL returning `{"busy": true}`. While it has a job running or waiting, the box is left out of new selections (main route, subagents, side tasks, automatic benches) and the decision inspector, `status` and the Desktop say why. A box Hermes is on when the work starts is left, and Hermes's model is unloaded there at once. Found on a DGX Spark: a Wi-Fi blip on the preferred box moved Hermes to the Spark mid-render, the warm-up loaded a 35B model next to a ComfyUI video job, the GPU ran out of memory and the job crawled for 90 minutes before ComfyUI crashed.
+- **One missed probe is not an outage.** A box that was up is held (as `degraded`, "missed 1 check") until it misses `down_after_misses` probes in a row (default 2), at least 15 s apart from the first, so fast Desktop probing cannot count two misses at once. Set it to 1 for the old behaviour.
+
 ## 0.3.3 (2026-11-12)
 
 - Routing uses each box's best speed on the model in the last week, not its latest bench. A bench taken while something else used the GPU (ComfyUI on a DGX Spark, a training run) reads low, and Local Fleet only sees a box's inference server, never its GPU, so that reading used to stand as the box's speed until the next bench. A bench below 60% of the best is now flagged in `bench`, `status` and the Desktop as "GPU busy?", and speeds older than a week stop counting.

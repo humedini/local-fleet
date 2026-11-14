@@ -57,6 +57,7 @@ def hermes(tmp_path, monkeypatch):
     store.bind(None)
     store.write_setting("cloud_model", "anthropic/claude-sonnet-4")
     store.write_setting("default_model", "qwen")
+    store.write_setting("down_after_misses", 1)  # these tests take boxes down in one probe; test_busy covers the grace
     f = store.fleet()
     f.add("gx10", "http://gx:11434/v1")
     f.add("spark2", "http://s2:11434/v1")

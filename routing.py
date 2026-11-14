@@ -76,6 +76,8 @@ def check(node: dict, snap: dict | None, want: str, excluded: dict | None = None
         return False, f"simulated outage (rehearsal) until {_hhmm(ex.get('until'))}"
     if not snap or snap.get("status") not in ("ok", "degraded"):
         return False, f"down: {(snap or {}).get('detail') or 'not probed'}"
+    if snap.get("busy"):
+        return False, f"busy with other GPU work ({snap.get('busy_detail') or 'busy check'})"
     if not routable(node, snap, want):
         return False, f"does not have {want}"
     return verdict((node.get("caps") or {}).get(want), min_context)
