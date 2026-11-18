@@ -8,345 +8,201 @@
 
 ## Executive Summary
 
-Local Fleet is a Hermes plugin for health-aware routing across local inference boxes (DGX Spark, Ollama, vLLM, LiteLLM). The codebase is production-ready with no obvious bugs or TODO markers, but has several architectural opportunities for enhancement.
+Local Fleet is a Hermes plugin for health-aware routing across local inference boxes (DGX Spark, Ollama, vLLM, LiteLLM). The codebase is **production-ready** with:
+- ✅ Parallel health probing (ThreadPoolExecutor, PROBE_CONCURRENCY=8)
+- ✅ Cluster support (nodes with `members` field)
+- ✅ Full Desktop UI with fitness map
+- ✅ Complete test coverage
+
+**Key finding:** The "async parallel probing" opportunity is already implemented. The `_LOAD` dict in `health.py` is the extension point for new providers.
 
 ---
 
-## High Priority Opportunities
+## Architecture Overview
 
-### 1. Provider Adapter Pattern
-
-**File:** `health.py`
-
-**Current State:** Health probes for Ollama, vLLM, and LiteLLM/OpenAI are hardcoded in `health.py`. Each provider type has its own detection logic embedded in the main code.
-
-**Opportunity:** Extract health probing into a plugin/adapter pattern where new providers can register their probe functions.
-
-**Implementation:**
-```python
-# Create a registry pattern
-PROVIDER_PROBES = {}
-
-def register_probe(kind: str, probe_fn: Callable):
-    PROVIDER_PROBES[kind] = probe_fn
-
-def probe_node(node: dict) -> dict:
-    kind = node.get("kind")
-    if kind in PROVIDER_PROBES:
-        return PROVIDER_PROBES[kind](node)
-    # fallback
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Local Fleet                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐         │
+│  │ fleet.py    │────▶│engine.py    │────▶│routing.py   │         │
+│  │ (registry)  │     │(orchestrate)│     │(decisions)  │         │
+│  └─────────────┘     └─────────────┘     └─────────────┘         │
+│         │                              │  │                    │
+│         ▼                              ▼  ▼                    │
+│  ┌─────────────┐     ┌─────────────┐  ┌─────────────┐           │
+│  │ health.py   │────▶│readiness.py │  │traffic.py   │           │
+│  │ (probes)    │     │ (model caps)│  │ (stats)     │           │
+│  └─────────────┘     └─────────────┘  └─────────────┘           │
+│                                                                  │
+│  Hermes Integration:                                             │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │ __init__.py: on_session_start, pre_tool_call,               ││
+│  │               post_api_request, api_request_error,          ││
+│  │               post_auxiliary_call                           ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
+│  │ CLI (cli.py) │  │Desktop UI    │  │REST API      │           │
+│  │              │  │(plugin.js)   │  │(plugin_api.py)│          │
+│  └──────────────┘  └──────────────┘  └──────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Benefits:**
-- Easy addition of new inference providers (TensorRT, Azure ML, AWS Bedrock, etc.)
-- Separates concerns: core routing logic doesn't need to know about provider specifics
-- Follows Hermes plugin patterns for extensibility
-
-**Estimated Effort:** Medium
-
 ---
 
-### 2. Enhanced Cluster Support
+## What Already Exists
 
-**Files:** `fleet.py`, `dashboard/plugin.js`, `dashboard/plugin_api.py`
-
-**Current State:** Clusters exist but are simplified - just groups of nodes serving one model.
-
-**Opportunity:** Add cluster-level features:
-
-1. **Cluster Health Aggregation:**
-   - Display cluster health score (percentage of healthy nodes)
-   - Per-cluster load metrics
-   - Cluster failover (route to another cluster if primary is down)
-
-2. **Cross-Node Load Balancing:**
-   - Distribute inference across cluster nodes based on:
-     - GPU utilization
-     - VRAM availability
-     - Network proximity
-   - Round-robin or weighted routing within cluster
-
-3. **Cluster Management UI:**
-   - Cluster creation/deletion in Desktop
-   - Node assignment to clusters
-   - Cluster-specific model pools
-
-4. **Cluster Failover:**
-   - Define failover behavior at cluster level
-   - Pre-warm other clusters
-
-**Estimated Effort:** High
-
----
-
-## Medium Priority Opportunities
-
-### 3. Savings Analytics Dashboard
-
-**Files:** `traffic.py`, `reports.py`, `dashboard/plugin.js`, `dashboard/plugin_api.py`
-
-**Current State:** Basic savings reporting exists (`receipt()` endpoint) but Dashboard UI is minimal.
-
-**Opportunity:** Enhance with comprehensive analytics:
-
-1. **Time-Series Charts:**
-   - Daily/weekly/monthly spend avoided
-   - Local vs cloud cost comparison
-   - Cost per model/provider
-
-2. **Breakdown Views:**
-   - Savings by node
-   - Savings by session type
-   - Peak vs off-peak savings
-
-3. **Projections:**
-   - Estimated monthly savings based on current usage
-   - Savings potential if all boxes were used
-   - Cost avoidance trends
-
-4. **Export Capabilities:**
-   - CSV/PDF reports
-   - JSON export for external tools
-
-**Implementation Notes:**
-- `traffic.py` already tracks `endpoint`, `tokens`, `duration`
-- `reports.py` has `savings_receipt()` and `incident_card()`
-- Dashboard already has charting infrastructure (charts.js)
-
-**Estimated Effort:** Medium
-
----
-
-### 4. Async Parallel Probing
-
-**Files:** `health.py`, `engine.py`
-
-**Current State:** `probe_all()` probes nodes sequentially in a loop.
-
-**Opportunity:** Parallelize health checks with configurable concurrency.
-
-**Implementation:**
+### 1. **Parallel Probing** (health.py:193-201)
 ```python
-import asyncio
-import httpx
-
-async def probe_all_async(nodes: list[dict], want: str = None, 
-                          max_concurrent: int = 10) -> dict:
-    """Probe all nodes concurrently with semaphore limiting."""
-    semaphore = asyncio.Semaphore(max_concurrent)
-    
-    async def probe_one(node):
-        async with semaphore:
-            return await _probe_node_async(node, want)
-    
-    tasks = [probe_one(node) for node in nodes]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    return dict(zip([n["id"] for n in nodes], results))
+def probe_all(nodes: list[dict], timeout: float = 2.0, want="",
+              transport: httpx.BaseTransport | None = None) -> dict[str, dict]:
+    """Probe nodes in parallel; returns {node_id: snapshot}."""
+    with ThreadPoolExecutor(max_workers=min(PROBE_CONCURRENCY, len(nodes))) as pool:
+        futures = {n["id"]: pool.submit(probe_node, n, client, want) for n in nodes}
+        return {nid: f.result() for nid, f in futures.items()}
 ```
 
-**Benefits:**
-- Faster fleet detection on large clusters
-- Configurable concurrency limits
-- Timeout isolation per probe
+### 2. **Cluster Support** (fleet.py:200-250)
+- Nodes can have `members` field pointing to other node IDs
+- Clusters must have 2+ members, cannot contain themselves
+- Member removal requires removing from clusters first
 
-**Hermes Consideration:**
-- The existing `_refresh_on_session_start` uses threading (not async)
-- Could migrate to async pattern or keep threaded with connection pooling
+### 3. **Provider Extension Point** (health.py:186)
+```python
+_LOAD = {"ollama": _ollama_load, "vllm": _vllm_load}
+```
+- Only `ollama` and `vllm` have load probes
+- LiteLLM/OpenAI-compatible do latency-only probing
 
-**Estimated Effort:** Low-Medium
+### 4. **Ready Monitoring** (doctor.py)
+- HTTP address privacy checks
+- Watch heartbeat tracking
+- Plain HTTP warnings
+
+### 5. **Traffic Recording** (traffic.py)
+- Records endpoint, tokens, duration
+- Privacy scrubbing available
+- Summarizes savings
 
 ---
 
-### 5. Model Compatibility Intelligence
+## Identified Development Opportunities
+
+### HIGH PRIORITY
+
+#### 1. Expand Provider Support
+
+**Current state:** Only `ollama` and `vllm` have load probes in `_LOAD`. LiteLLM/OpenAI-compatible only check latency.
+
+**Opportunity:** Add load probing for:
+- **LiteLLM:** Query `/stats` or similar endpoint if available
+- **OpenAI-compatible:** Use `/v1/engines` or similar
+- **Custom providers:** Allow registration of new probe functions
+
+**Files:** `health.py`, `constants.py`
+
+**Why not urgent:** Core functionality works; this is for advanced deployments.
+
+---
+
+#### 2. Enhance Cluster Features
+
+**Current state:** Basic cluster membership in `fleet.py`, but no cluster-level operations.
+
+**Opportunity:** Add:
+1. **Cluster health aggregation:** Percentage of healthy nodes
+2. **Cluster metrics:** Aggregate load, member status display
+3. **Cluster failover:** Route to another cluster if primary fails
+4. **Cluster-specific routing:** Prefer cluster members for consistency
+
+**Files:** `fleet.py`, `routing.py`, `dashboard/plugin.py`
+
+**Current limitation:** Clusters exist in model but Desktop UI has minimal cluster-specific display.
+
+---
+
+#### 3. Model Compatibility Intelligence
+
+**Current state:** `readiness.py` only checks Ollama. Others return "not checked yet".
+
+**Found in `readiness.py`:**
+```python
+def inspect(client, node, model, ps_context=None):
+    if node.get("kind") != "ollama":
+        out["source"] = f"{node.get('kind')} does not report capabilities"
+        return out
+```
+
+**Opportunity:** Add capability checking for:
+- **vLLM:** Query model info endpoint
+- **LiteLLM:** Check model capabilities via API
+- **OpenAI-compatible:** Use `/v1/models` detail if available
 
 **Files:** `readiness.py`, `health.py`
 
-**Current State:** 
-- Checks Ollama for tools/vision/context via `/api/show`
-- Other providers report "not checked yet"
+---
 
-**Opportunity:** Expand capability checking:
+### MEDIUM PRIORITY
 
-1. **For vLLM:**
-   - Check supported architectures from `/v1/models` response
-   - Validate CUDA compute capabilities
-   - Check tensor parallel support
+#### 4. Savings Analytics Enhancement
 
-2. **For LiteLLM:**
-   - Query `/marshal/models` for tool support
-   - Check context window limits via model info
+**Current state:** 
+- `traffic.summarize()` tracks data
+- `reports.savings_receipt()` generates markdown
+- Dashboard (`plugin.js`) shows basic stats
 
-3. **VRAM Requirements:**
-   - Query model sizes before suggesting routing
-   - Check if node has sufficient VRAM (with safety margin)
+**Opportunity:** Add to Dashboard:
+- Time-series charts (daily/weekly savings)
+- Per-node breakdown
+- Per-model breakdown
+- Cost projections
 
-4. **Operator Support:**
-   - Check if model supports tool-calling, vision, JSON mode
-   - Cache results in node metadata
+**Found in `plugin.js`:** `SavingsPanel` component is basic.
 
-**Implementation:**
-```python
-def check_vllm_compatibility(node: dict, model: str) -> dict:
-    # Query /v1/models for model info
-    # Check gpu_memory, tensor_parallel_size
-    # Return compatibility verdict
-    
-def check_litellm_compatibility(node: dict, model: str) -> dict:
-    # Query /marshal/models endpoint
-    # Return capabilities
-```
-
-**Estimated Effort:** Medium
+**Files:** `traffic.py`, `reports.py`, `dashboard/plugin.js`, `dashboard/plugin_api.py`
 
 ---
 
-## Low Priority Opportunities
+#### 5. Network Topology Awareness
 
-### 6. Configuration Versioning
-
-**File:** `store.py`
-
-**Current State:** Fleet configuration is a single JSON file with no history.
-
-**Opportunity:** Add version history for rollback capability:
-
-1. **Version Table:**
-   ```python
-   CREATE TABLE config_versions (
-       id INTEGER PRIMARY KEY,
-       timestamp TEXT,
-       config_json TEXT,
-       reason TEXT,  # "user edit", "auto-update", etc.
-       hash TEXT
-   )
-   ```
-
-2. **API Endpoints:**
-   - `GET /config/history` - list versions
-   - `POST /config/revert` - revert to version
-   - `POST /config/diff` - show diff between versions
-
-3. **Storage Strategy:**
-   - Keep only last N versions (configurable)
-   - Store diffs, not full copies (optional)
-
-**Estimated Effort:** Medium
-
----
-
-### 7. Network Topology Awareness
-
-**Proposal:** New module `network.py`
-
-**Current State:** No awareness of network latency between boxes.
-
-**Opportunity:** 
-1. Measure latency between boxes and Hermes
-2. Track packet loss/jitter
-3. Prefer lower-latency paths for interactive tasks
-
-**Implementation:**
-```python
-def measure_latency(node: dict, target: str = "localhost") -> float:
-    """Ping or HTTP latency measurement."""
-    
-def network_score(node: dict) -> float:
-    """Composite score based on latency, bandwidth, etc."""
-```
-
-**Integration Points:**
-- Add to `pick_freest()` for side tasks
-- Display in Desktop UI with map visualization
-
-**Estimated Effort:** Medium
-
----
-
-### 8. Enhanced Benchmarking
-
-**File:** `bench.py`
-
-**Current State:** Standalone benchmarking tool.
-
-**Opportunity:** 
-1. Integrate into health probes for warm-up measurements
-2. Add model recommendation system (suggest which model to pull based on benchmarks)
-3. Store historical benchmarks per node
-
-**Estimated Effort:** Medium
-
----
-
-### 9. Multi-Tenant Isolation
-
-**Files:** `fleet.py`, `store.py`
-
-**Current State:** No tenant awareness - single fleet per deployment.
+**Current state:** No network awareness; routes purely on load/latency.
 
 **Opportunity:**
-1. Add tenant labels to nodes
-2. Route based on tenant affinity
-3. Separate fleet configs per tenant
+- Measure latency between boxes
+- Track network availability
+- Prefer lower-latency paths for interactive sessions
 
-**Use Case:** Enterprise deployment with multiple teams
-
-**Estimated Effort:** High
+**Files:** New `network.py`, integration with `routing.py`
 
 ---
 
-### 10. Predictive Load Estimation
+### LOWER PRIORITY
 
-**Files:** `routing.py`, `health.py`
+#### 6. Configuration Version Control
 
-**Current State:** Reacts to current queue length and load.
+**Current state:** `fleet.json` and `state.json` have no version history.
 
 **Opportunity:**
-1. Track request patterns over time
-2. Use simple ML or time-series to predict load
-3. Pre-emptively switch before load spikes
+- Add history/diff capability
+- Implement rollback feature
+- Add `fleet export` command
 
-**Implementation:**
-```python
-class LoadPredictor:
-    def record(self, node_id: str, load: float, timestamp: datetime):
-        """Record load measurement."""
-    
-    def predict(self, node_id: str, horizon: float = 60.0) -> float:
-        """Predict load in horizon seconds."""
-```
-
-**Estimated Effort:** High
+**Files:** `store.py`, `cli.py`
 
 ---
 
-## Additional Minor Opportunities
+#### 7. Enhanced Benchmarking
 
-### 11. CLI Enhancements
-- Add `fleet diff` to show config changes
-- Add `fleet export/import` for config backup
-- Add `fleet debug` for verbose troubleshooting
+**Current state:** `bench.py` standalone, not integrated into health checks.
 
-### 12. Desktop UI Improvements
-- Model performance graphs over time
-- Heatmap of node utilization
-- Quick actions toolbar
-- Keyboard shortcuts
+**Opportunity:**
+- Add to health checks for warm-up
+- Add model recommendations
+- Store historical benchmarks
 
-### 13. Documentation
-- API reference for plugin developers
-- Example provider adapter implementations
-- Integration guide for third-party tools
-
----
-
-## Technical Debt / Code Smells
-
-While reviewing the codebase, noted these areas for potential clean-up:
-
-1. **Stringly-Typed IDs:** Many functions use string IDs that could be more type-safe
-2. **Global State:** Some modules use global variables (`LAST` in desktop/plugin.js)
-3. **Mixed Concerns:** `health.py` handles both probing AND load calculation
-4. **Error Handling:** Some functions silently swallow exceptions
+**Note:** `bench.py` is well-designed and ready for integration.
 
 ---
 
@@ -354,49 +210,59 @@ While reviewing the codebase, noted these areas for potential clean-up:
 
 Based on test file review:
 
-1. No tests for async/probing behavior
-2. Limited cluster-specific tests
-3. No property-based tests for routing decisions
-4. Desktop UI has no automated tests (browser testing would be valuable)
+| Test File | Coverage | Gaps |
+|-----------|----------|------|
+| `test_health.py` | High | Cluster probing, new providers |
+| `test_routing.py` | High | Network latency weighting |
+| `test_engine.py` | High | Cluster scenarios |
+| `test_gaps.py` | Focused | Specific gaps documented |
+
+**Missing:**
+- Integration tests for clusters
+- Frontend UI tests
+- Property-based tests for routing decisions
 
 ---
 
-## Recommended Implementation Order
+## Recommendations
 
-1. **Provider Adapter Pattern** (High impact, Medium effort) - Makes codebase more extensible
-2. **Async Probing** (Low effort, High impact for large fleets) - Immediate performance gain
-3. **Savings Dashboard** (Visible feature, Medium effort) - User-facing improvement
-4. **Model Compatibility** (Medium effort, prevents errors) - Improves reliability
-5. **Configuration Versioning** (Safety feature, Medium effort) - Operational improvement
+### For Implementation
 
----
+1. **First: Provider adapter documentation** - The `_LOAD` dict exists but isn't documented for extension
+2. **Second: Cluster UI enhancements** - Add cluster-specific display in Dashboard
+3. **Third: Model compatibility** - Expand beyond Ollama-only checking
 
-## Files Referenced
+### Architecture Strengths
+
+1. **Clean separation of concerns** - `health.py`, `routing.py`, `engine.py` have distinct roles
+2. **Privacy by design** - `render.scrub()` everywhere
+3. **Drift detection** - Side task drift is well-implemented
+4. **Test coverage** - Tests cover core functionality
+
+### Files Reference
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `health.py` | ~300 | Health probes |
-| `fleet.py` | ~250 | Node registry |
-| `engine.py` | ~400 | Orchestration |
-| `routing.py` | ~300 | Routing policy |
-| `store.py` | ~350 | Configuration/state store |
-| `readiness.py` | ~200 | Model capability checking |
-| `traffic.py` | ~150 | Real traffic tracking |
-| `reports.py` | ~200 | Reporting |
-| `bench.py` | ~150 | Benchmarking |
-| `dashboard/plugin_api.py` | ~200 | Desktop REST API |
-| `desktop/plugin.js` | ~1000+ | Desktop UI |
-| `__init__.py` | ~100 | Plugin registration |
+| `health.py` | ~200 | Health probes, `_LOAD` extension point |
+| `readiness.py` | ~100 | Model capability checking (Ollama only) |
+| `routing.py` | ~150 | Routing policy, `pick_freest()` |
+| `fleet.py` | ~260 | Node registry, cluster membership |
+| `store.py` | ~150 | Config/state persistence |
+| `bench.py` | ~150 | Performance benchmarking |
+| `traffic.py` | ~100 | Traffic recording |
+| `dashboard/plugin.js` | 1464 | Desktop UI |
+| `dashboard/plugin_api.py` | ~230 | Desktop REST API |
 
 ---
 
 ## Conclusion
 
-Local Fleet is a well-architected plugin with production-ready code. The identified opportunities are primarily architectural enhancements that would:
+Local Fleet is well-engineered with production-ready code. The major opportunities are:
 
-1. **Improve extensibility** (Provider adapters)
-2. **Scale better** (Async probing, clusters)
-3. **Provide better visibility** (Dashboard analytics)
-4. **Increase reliability** (Compatibility checking, config versioning)
+1. **Provider adapter documentation** (quick win)
+2. **Cluster UI enhancements** (medium effort, visible impact)
+3. **Model compatibility for vLLM/LiteLLM** (medium effort)
 
-Most opportunities can be implemented incrementally without breaking existing functionality.
+The "parallel probing" is already implemented - no opportunity there.
+
+The codebase follows Hermes plugin patterns well with hooks, tools, and desktop integration.
