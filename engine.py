@@ -4,7 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from . import aux, config_write, events, pricing, private, readiness, store, traffic
+from . import _aux, config_write, events, pricing, private, readiness, store, traffic
 from .warm import warm
 from .constants import MISS_FLOOR_S
 from .fleet import now_iso
@@ -438,7 +438,7 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
         model = current.get("model") or ""
     elif node is None:
         if current:
-            aux.apply(current["tasks"], None, state.get("aux_original") or {})
+            _aux.apply(current["tasks"], None, state.get("aux_original") or {})
             state["aux_applied"] = None
             return "no healthy box: side tasks back on their own settings"
         return None
@@ -446,12 +446,12 @@ def _follow_aux(settings, f, results, decision, state) -> str | None:
         model = model_for(node, results.get(node["id"]) or {}, decision.get("tier_model") or "")
     if node is None:
         return None
-    blk = aux.block(node, model, None if private_on else settings.get("cloud_provider"),
+    blk = _aux.block(node, model, None if private_on else settings.get("cloud_provider"),
                     None if private_on else settings.get("cloud_model"))
     want = {"tasks": tasks, "node_id": node["id"], "node_name": node["name"], "model": model, "block": blk}
     if current == want:
         return f"side tasks unchanged{note}" if keyed else None
-    before = aux.apply(tasks, blk, None)
+    before = _aux.apply(tasks, blk, None)
     original = state.get("aux_original") or {}
     for t in tasks:
         original.setdefault(t, before.get(t, {}))
@@ -616,7 +616,7 @@ def aux_off() -> list[str]:
         store.write_setting("aux_tasks", [])
         if not current:
             return []
-        aux.apply(current["tasks"], None, state.get("aux_original") or {})
+        _aux.apply(current["tasks"], None, state.get("aux_original") or {})
         state["aux_applied"] = None
         state.pop("aux_original", None)
         store.save_state(state)

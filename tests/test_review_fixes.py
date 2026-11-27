@@ -7,7 +7,7 @@ import json
 import respx
 
 import local_fleet
-from local_fleet import aux, config_write, engine, store, tools
+from local_fleet import _aux, config_write, engine, store, tools
 from test_engine import boxes, hermes  # noqa: F401  (fixture)
 
 SECRET = "sk-live-not-for-boxes"
@@ -92,9 +92,9 @@ def test_older_plugin_data_holding_a_key_is_put_back_and_dropped(hermes):  # noq
 def test_side_task_snapshot_keeps_env_references(hermes):  # noqa: F811
     hermes.env["CLOUD_KEY"] = SECRET
     hermes.cfg["auxiliary"] = {"compression": {"provider": "auto", "fallback_chain": [dict(CLOUD_KEYED)]}}
-    before = aux.apply(["compression"], {"provider": "ollama", "model": "q", "base_url": "http://gx:11434/v1"}, None)
+    before = _aux.apply(["compression"], {"provider": "ollama", "model": "q", "base_url": "http://gx:11434/v1"}, None)
     assert before["compression"]["fallback_chain"][0]["api_key"] == "${CLOUD_KEY}"
-    aux.apply(["compression"], None, before)
+    _aux.apply(["compression"], None, before)
     assert hermes.cfg["auxiliary"]["compression"]["fallback_chain"][0]["api_key"] == "${CLOUD_KEY}"
 
 
