@@ -7,7 +7,7 @@ import sys
 import time
 
 from . import config_write, doctor, engine, render, store
-from .aux import DEFAULT_TASKS as AUX_DEFAULT, TASKS as AUX_TASKS
+from ._aux import DEFAULT_TASKS as AUX_DEFAULT, TASKS as AUX_TASKS
 from .constants import KINDS, MODES, OSES, VENDORS
 from .fleet import FleetError, now_iso, public_node
 from .render import decision_text, nodes_table, status_text, target_text

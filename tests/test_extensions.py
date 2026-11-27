@@ -4,7 +4,7 @@ import time
 
 import respx
 
-from local_fleet import aux, delegation, engine, store, traffic
+from local_fleet import _aux, delegation, engine, store, traffic
 from local_fleet.warm import warm
 from test_engine import boxes, hermes  # noqa: F401  (fixture)
 
@@ -93,7 +93,7 @@ def test_warm_loads_only_when_not_in_memory():
 
 
 def test_aux_block_shape():
-    b = aux.block(dict(GX, kind="vllm"), "m", "", "")
+    b = _aux.block(dict(GX, kind="vllm"), "m", "", "")
     assert b == {"provider": "vllm", "model": "m", "base_url": "http://gx:11434/v1"}
 
 
